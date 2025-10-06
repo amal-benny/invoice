@@ -1,0 +1,299 @@
+// // components/PaymentModal.tsx
+// "use client";
+// import { useState, useMemo } from "react";
+// import { authFetch } from "../lib/api"; // adapt import path if needed
+
+// type Invoice = any;
+
+// export default function PaymentModal({
+//   invoice,
+//   onClose,
+//   onSuccess,
+// }: {
+//   invoice: Invoice;
+//   onClose: () => void;
+//   onSuccess: (updatedInvoice: any) => void;
+// }) {
+//   const existingAdvance = Number(invoice?.advancePaid || 0);
+//   const total = Number(invoice?.total || 0);
+//   const remaining = Math.max(0, total - existingAdvance);
+
+//   // Fields
+//   const [amount, setAmount] = useState<number>(remaining || 0); // default pay remaining
+//   const [method, setMethod] = useState<string>("Cash");
+//   const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+//   const [note, setNote] = useState<string>("");
+//   const [reference, setReference] = useState<string>("");
+//   const [loading, setLoading] = useState(false);
+//   const [error, setError] = useState<string | null>(null);
+
+//   const isOverpayAllowed = true; // set false to prevent overpay
+
+//   const canSubmit = amount > 0 && !isNaN(amount);
+
+//   async function submitPayment(e?: React.FormEvent) {
+//     if (e) e.preventDefault();
+//     if (!canSubmit) {
+//       setError("Enter a valid amount greater than 0");
+//       return;
+//     }
+//     if (!isOverpayAllowed && amount > remaining) {
+//       setError("Amount exceeds remaining balance");
+//       return;
+//     }
+//     setError(null);
+//     setLoading(true);
+
+//     try {
+//       const payload = {
+//         invoiceId: invoice.id,
+//         amount,
+//         method,
+//         date,
+//         note,
+       
+//       };
+
+//       const resp = await authFetch("/api/payments", {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify(payload),
+//       });
+
+//       // backend returns { payment, invoice }
+//       if (resp?.invoice) {
+//         onSuccess(resp.invoice);
+//       } else {
+//         onSuccess(resp);
+//       }
+//       onClose();
+//     } catch (err: any) {
+//       setError(err?.message || "Payment failed");
+//     } finally {
+//       setLoading(false);
+//     }
+//   }
+
+//   return (
+//     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+//       <div className="w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
+//         <h3 className="text-lg font-semibold mb-3">Record Payment</h3>
+
+//         <div className="space-y-3 mb-3">
+//           <div className="text-sm text-gray-700">
+//             <div><strong>Invoice:</strong> {invoice.invoiceNumber}</div>
+//             <div><strong>Total:</strong> {invoice.currency} {total.toFixed(2)}</div>
+//             <div><strong>Already Paid (advance):</strong> {invoice.currency} {existingAdvance.toFixed(2)}</div>
+//             <div><strong>Remaining:</strong> {invoice.currency} {remaining.toFixed(2)}</div>
+//           </div>
+
+//           <form onSubmit={submitPayment} className="space-y-2">
+//             <div>
+//               <label className="kv">Amount ({invoice.currency})</label>
+//               <input
+//                 className="input"
+//                 type="number"
+//                 step="0.01"
+//                 value={amount}
+//                 onChange={(e) => setAmount(Number(e.target.value || 0))}
+//               />
+//             </div>
+
+//             <div>
+//               <label className="kv">Date</label>
+//               <input
+//                 className="input"
+//                 type="date"
+//                 value={date}
+//                 onChange={(e) => setDate(e.target.value)}
+//               />
+//             </div>
+
+//             <div>
+//               <label className="kv">Payment Method</label>
+//               <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+//                 <option>Cash</option>
+//                 <option>UPI</option>
+//                 <option>Bank Transfer</option>
+//                 <option>Card</option>
+//                 <option>Other</option>
+//               </select>
+//             </div>
+
+//             {/* <div>
+//               <label className="kv">Reference</label>
+//               <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+//             </div> */}
+
+//             <div>
+//               <label className="kv">Note</label>
+//               <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+//             </div>
+
+//             {error && <div className="text-sm text-red-600">{error}</div>}
+
+//             <div className="flex gap-2 mt-3">
+//               <button type="button" className="px-4 py-2 border rounded" onClick={onClose} disabled={loading}>
+//                 Cancel
+//               </button>
+//               <button type="submit" className="btn px-4 py-2" disabled={!canSubmit || loading}>
+//                 {loading ? "Processing..." : "Save Payment"}
+//               </button>
+//             </div>
+//           </form>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+
+// components/PaymentModal.tsx
+"use client";
+import { useState } from "react";
+import { authFetch } from "../lib/api";
+
+type Invoice = any;
+
+export default function PaymentModal({
+  invoice,
+  onClose,
+  onSuccess,
+}: {
+  invoice: Invoice;
+  onClose: () => void;
+  onSuccess: (updatedInvoice: any) => void;
+}) {
+  const existingAdvance = Number(invoice?.advancePaid || 0);
+  const total = Number(invoice?.total || 0);
+  const remaining = Math.max(0, total - existingAdvance);
+
+  const [amount, setAmount] = useState<number>(remaining || 0);
+  const [method, setMethod] = useState<string>("Cash");
+  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState<string>("");
+  const [reference, setReference] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isOverpayAllowed = true;
+  const canSubmit = amount > 0 && !isNaN(amount);
+
+  async function submitPayment(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!canSubmit) {
+      setError("Enter a valid amount greater than 0");
+      return;
+    }
+    if (!isOverpayAllowed && amount > remaining) {
+      setError("Amount exceeds remaining balance");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+
+    try {
+      const payload: any = {
+        invoiceId: invoice.id,
+        amount,
+        method,
+        date,
+        note,
+      };
+      // include reference if provided
+      if (reference) payload.reference = reference;
+
+      const resp = await authFetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      // Prefer backend-returned invoice (contains advancePaid & status)
+      const updatedInvoice = resp?.invoice ?? resp;
+
+      // Sanity: if backend didn't return status/advancePaid, compute fallback
+      if (updatedInvoice) {
+        // ensure numbers
+        updatedInvoice.advancePaid = Number(updatedInvoice.advancePaid ?? updatedInvoice.advancePaid ?? 0);
+        updatedInvoice.total = Number(updatedInvoice.total ?? 0);
+
+        // If backend didn't set status, compute here (fallback)
+        if (!updatedInvoice.status) {
+          if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
+          else if ((updatedInvoice.advancePaid || 0) <= 0) updatedInvoice.status = "PENDING";
+          else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total) updatedInvoice.status = "PAID";
+          else updatedInvoice.status = "PARTIAL";
+        }
+      }
+
+      onSuccess(updatedInvoice);
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Payment failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+      <div className="w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
+        <h3 className="text-lg font-semibold mb-3">Record Payment</h3>
+
+        <div className="space-y-3 mb-3">
+          <div className="text-sm text-gray-700">
+            <div><strong>Invoice:</strong> {invoice.invoiceNumber}</div>
+            <div><strong>Total:</strong> {invoice.currency} {total.toFixed(2)}</div>
+            <div><strong>Already Paid (advance):</strong> {invoice.currency} {existingAdvance.toFixed(2)}</div>
+            <div><strong>Remaining:</strong> {invoice.currency} {remaining.toFixed(2)}</div>
+          </div>
+
+          <form onSubmit={submitPayment} className="space-y-2">
+            <div>
+              <label className="kv">Amount ({invoice.currency})</label>
+              <input className="input" type="number" step="0.01" value={amount} onChange={(e) => setAmount(Number(e.target.value || 0))} />
+            </div>
+
+            <div>
+              <label className="kv">Date</label>
+              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="kv">Payment Method</label>
+              <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+                <option>Cash</option>
+                <option>UPI</option>
+                <option>Bank Transfer</option>
+                <option>Card</option>
+                <option>Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="kv">Reference (optional)</label>
+              <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="kv">Note</label>
+              <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+
+            {error && <div className="text-sm text-red-600">{error}</div>}
+
+            <div className="flex gap-2 mt-3">
+              <button type="button" className="px-4 py-2 border rounded" onClick={onClose} disabled={loading}>
+                Cancel
+              </button>
+              <button type="submit" className="btn px-4 py-2" disabled={!canSubmit || loading}>
+                {loading ? "Processing..." : "Save Payment"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
