@@ -1,0 +1,175 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// generator client {
+//   provider = "prisma-client-js"
+//   output   = "../generated/prisma"
+// }
+
+// datasource db {
+//   provider = "postgresql"
+//   url      = env("DATABASE_URL")
+// }
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int       @id @default(autoincrement())
+  email          String    @unique
+  password       String
+  fullName       String?
+  role           Role      @default(USER)
+  tempPassword   Boolean   @default(true) // forces password change after first login
+  createdAt      DateTime  @default(now())
+  invoices       Invoice[] @relation("createdBy")
+  // companySettings CompanySettings?
+  customers  Customer[] 
+  payments   Payment[]
+  Transactions Transaction[]
+  StartingBalances StartingBalance[]
+  settings CompanySettings[]
+  
+}
+
+
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model Customer {
+  id        Int       @id @default(autoincrement())
+  name      String
+  company   String?
+  email     String?
+  phone     String?
+  address   String?
+  status    PaymentStatus @default(UNPAID)
+  invoices  Invoice[]
+  createdAt DateTime  @default(now())
+  createdById  Int
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  panNumber   String?       // PAN number (optional)
+  gstNumber   String?       // GSTIN (optional)
+  
+}
+
+model Invoice {
+  id               Int          @id @default(autoincrement())
+  invoiceNumber    String       @unique
+  type             InvoiceType  @default(INVOICE) // QUOTE or INVOICE
+  customer         Customer?    @relation(fields: [customerId], references: [id])
+  customerId       Int?
+  createdBy        User?        @relation("createdBy", fields: [createdById], references: [id])
+  createdById      Int?
+  date             DateTime     @default(now())
+  dueDate          DateTime?
+  items            InvoiceItem[]
+  subtotal         Float        @default(0)
+  totalDiscount    Float        @default(0)
+  totalGST         Float        @default(0)
+  advancePaid      Float        @default(0)
+  total            Float        @default(0)
+  status           InvoiceStatus @default(PENDING) // PENDING, PAID, PARTIAL, OVERDUE, CANCELLED
+  remark           String?
+  currency         String       @default("INR")
+  createdAt        DateTime     @default(now())
+  payments         Payment[]
+}
+
+model InvoiceItem {
+  id          Int      @id @default(autoincrement())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  invoiceId   Int
+  description String
+  category    String?
+  quantity    Int      @default(1)
+  price       Float
+  gstPercent  Float?   // optional
+  discount    Float?   // item-level discount
+  advance     Float?   // item-level advance
+  remark      String?
+  hsn         String? 
+}
+
+model Payment {
+  id          Int     @id @default(autoincrement())
+  invoice     Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId   Int
+  method      String
+  amount      Float
+  date        DateTime @default(now())
+  note        String?
+  createdBy User      @relation(fields: [createdById], references: [id])
+  createdById Int
+}
+
+model CompanySettings {
+  id         Int     @id @default(autoincrement())
+  name       String
+  address    String?
+  contact    String?
+  gstNumber  String?
+  panNumber  String?    // NEW: PAN Number
+  taxPercent Float?    // NEW: default tax percent for items (e.g. 18.0)
+  taxType    String?   // NEW: "GST" | "VAT" | "TAX" etc.
+  currency   String  @default("INR")
+  logoPath   String? // path to uploaded logo
+  createdAt  DateTime @default(now())
+  userId     Int      // link to the user
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+
+model Transaction {
+  id        Int       @id @default(autoincrement())
+  type      String    // "INCOME" or "EXPENSE"
+  category  String
+  amount    Float
+  date      DateTime  @default(now())
+  description String?
+  method    String
+  reference String?
+  createdBy User      @relation(fields: [createdById], references: [id])
+  createdById Int
+}
+
+model StartingBalance {
+  id        Int      @id @default(autoincrement())
+  amount    Float
+  date      DateTime @default(now())
+  createdBy User     @relation(fields: [createdById], references: [id])
+  createdById Int
+}
+
+
+
+enum InvoiceType {
+  QUOTE
+  INVOICE
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  PARTIAL
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}

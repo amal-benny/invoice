@@ -1,0 +1,33 @@
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const authRoutes = require("./routes/auth");
+const adminRoutes = require("./routes/admin");
+const userRoutes = require("./routes/users");
+const invoiceRoutes = require("./routes/invoices");
+const customerRoutes = require("./routes/customers");
+const paymentRoutes = require("./routes/payments");
+const settingsRoutes = require("./routes/settings");
+const reportsRoutes = require("./routes/reports");
+const transactionsRoutes = require("./routes/transactions");
+const path = require("path");
+
+
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+// app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+// app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/reports", reportsRoutes);
+app.use("/api/transactions", transactionsRoutes);
+
+module.exports = app;
