@@ -64,54 +64,67 @@ export default function InlineInvoiceView({
     .join("\n");
 
   // Explicit print CSS (matches invoice container look & layout)
-  const printCss = `
-    /* Reset for print */
-    html,body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; }
-    body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: #ffffff; color:#111827; }
-    .invoice-card { box-sizing:border-box; width:100%; max-width: 800px; margin: 16px auto; padding: 32px; background:#ffffff; border:1px solid #e6e6e6; border-radius:8px; }
-    /* Header */
-    .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
-    .invoice-left { display:flex; align-items:center; gap:16px; }
-    .company-logo { height:64px; width:auto; object-fit:contain; }
-    .company-name { font-size:18px; font-weight:700; line-height:1.1; }
-    .company-meta { font-size:12px; color:rgba(0,0,0,0.65); margin-top:4px; }
-    .invoice-right { text-align:right; }
-    .invoice-type { font-size:26px; font-weight:800; letter-spacing:0.6px; }
-    .invoice-meta { margin-top:8px; display:inline-block; background:#f3f4f6; padding:8px 10px; border-radius:4px; font-size:12px; color:#111827; }
+  const compactCss = `
+  /* Reset for print */
+  html, body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; font-size:10px; }
+  body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111827; }
 
-    /* Bill To block */
-    .bill-to { margin-top:18px; background:#f9fafb; padding:16px; border-radius:6px; border:1px solid #f1f1f1; font-size:13px; color:#111827; }
+  /* Invoice card */
+  .invoice-card { 
+    box-sizing: border-box; 
+    width:100%; 
+    max-width:700px; 
+    margin:10px auto; 
+    padding:16px; 
+    background:#ffffff; 
+    border:1px solid #e6e6e6; 
+    border-radius:4px; 
+  }
 
-    /* Items table */
-    .items-table { width:100%; border-collapse:collapse; margin-top:18px; font-size:13px; }
-    .items-table thead tr { background:#6b2135; color:#fff; }
-    .items-table th, .items-table td { padding:12px 10px; border-bottom:1px solid #eee; vertical-align:top; }
-    .items-table th { font-weight:700; font-size:13px; text-align:left; }
-    .items-table td { color:#111827; }
-    .items-table .text-right { text-align:right; }
-    .items-table .text-center { text-align:center; }
+  /* Header */
+  .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .invoice-left { display:flex; align-items:center; gap:8px; }
+  .company-logo { height:40px; width:auto; object-fit:contain; }
+  .company-name { font-size:14px; font-weight:700; line-height:1.1; }
+  .company-meta { font-size:8px; color:rgba(0,0,0,0.65); margin-top:1px; }
+  .invoice-right { text-align:right; }
+  .invoice-type { font-size:16px; font-weight:700; letter-spacing:0.3px; }
+  .invoice-meta { margin-top:4px; display:inline-block; background:#f3f4f6; padding:4px 6px; border-radius:3px; font-size:8px; color:#111827; }
 
-    /* Summary box (right) */
-    .summary-wrap { display:flex; justify-content:flex-end; margin-top:18px; }
-    .summary-box { width:320px; background:#f9fafb; border:1px solid #ececec; border-radius:6px; padding:14px; font-size:13px; }
-    .summary-row { display:flex; justify-content:space-between; padding:6px 0; color:#111827; }
-    .summary-row.small { font-size:12px; color:rgba(0,0,0,0.7); }
-    .balance { font-weight:800; color:#7b2540; font-size:16px; margin-top:8px; }
+  /* Bill To block */
+  .bill-to { margin-top:8px; background:#f9fafb; padding:8px; border-radius:3px; border:1px solid #f1f1f1; font-size:9px; color:#111827; }
 
-    /* Notes */
-    .notes { margin-top:14px; background:#f9fafb; padding:12px; border-radius:6px; border:1px solid #ececec; font-size:13px; }
+  /* Items table */
+  .items-table { width:100%; border-collapse:collapse; margin-top:8px; font-size:9px; }
+  .items-table thead tr { background:#6b2135; color:#fff; }
+  .items-table th, .items-table td { padding:4px 4px; border-bottom:1px solid #eee; vertical-align:top; }
+  .items-table th { font-weight:700; font-size:9px; text-align:left; }
+  .items-table td { color:#111827; }
+  .items-table .text-right { text-align:right; }
+  .items-table .text-center { text-align:center; }
 
-    /* utility */
-    .kv { font-size:12px; color:rgba(0,0,0,0.65); }
-    .small { font-size:12px; color:rgba(0,0,0,0.65); }
+  /* Summary box */
+  .summary-wrap { display:flex; justify-content:flex-end; margin-top:8px; }
+  .summary-box { width:200px; background:#f9fafb; border:1px solid #ececec; border-radius:4px; padding:6px; font-size:9px; }
+  .summary-row { display:flex; justify-content:space-between; padding:2px 0; color:#111827; }
+  .summary-row.small { font-size:8px; color:rgba(0,0,0,0.7); }
+  .balance { font-weight:700; color:#7b2540; font-size:12px; margin-top:4px; }
 
-    /* Print page size and margins */
-    @media print {
-      @page { size: ${pageSize} portrait; margin: 10mm; }
-      body { margin: 0; }
-      .invoice-card { box-shadow:none !important; }
-    }
-  `;
+  /* Notes */
+  .notes { margin-top:6px; background:#f9fafb; padding:6px; border-radius:3px; border:1px solid #ececec; font-size:9px; }
+
+  /* Utility classes */
+  .kv { font-size:8px; color:rgba(0,0,0,0.65); }
+  .small { font-size:8px; color:rgba(0,0,0,0.65); }
+
+  /* Print page size and margins */
+  @media print {
+    @page { size: ${pageSize} portrait; margin:6mm; }
+    body { margin: 0; }
+    .invoice-card { box-shadow:none !important; }
+  }
+`;
+
 
   // Build the HTML for print window. We wrap the card in a container invoice-card
   // We take the existing component outerHTML and wrap. Also ensure table classes replaced
@@ -126,7 +139,7 @@ export default function InlineInvoiceView({
       <head>
         <title>${invoice ? `Invoice-${invoice.invoiceNumber}` : "Invoice"}</title>
         ${styles}
-        <style>${printCss}</style>
+        <style>${compactCss}</style>
       </head>
       <body>
         ${invoiceHtml}
@@ -169,34 +182,68 @@ export default function InlineInvoiceView({
     .join("\n");
 
   // Define invoice-specific styling (same as print layout)
-  const pdfCss = `
-    html,body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; }
-    body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: #ffffff; color:#111827; }
-    .invoice-card { box-sizing:border-box; width:100%; max-width: 800px; margin: 16px auto; padding: 32px; background:#ffffff; border:1px solid #e6e6e6; border-radius:8px; }
-    .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
-    .invoice-left { display:flex; align-items:center; gap:16px; }
-    .company-logo { height:64px; width:auto; object-fit:contain; }
-    .company-name { font-size:18px; font-weight:700; line-height:1.1; }
-    .company-meta { font-size:12px; color:rgba(0,0,0,0.65); margin-top:4px; }
-    .invoice-right { text-align:right; }
-    .invoice-type { font-size:26px; font-weight:800; letter-spacing:0.6px; }
-    .invoice-meta { margin-top:8px; display:inline-block; background:#f3f4f6; padding:8px 10px; border-radius:4px; font-size:12px; color:#111827; }
-    .bill-to { margin-top:18px; background:#f9fafb; padding:16px; border-radius:6px; border:1px solid #f1f1f1; font-size:13px; color:#111827; }
-    .items-table { width:100%; border-collapse:collapse; margin-top:18px; font-size:13px; }
-    .items-table thead tr { background:#6b2135; color:#fff; }
-    .items-table th, .items-table td { padding:12px 10px; border-bottom:1px solid #eee; vertical-align:top; }
-    .items-table th { font-weight:700; font-size:13px; text-align:left; }
-    .items-table td { color:#111827; }
-    .items-table .text-right { text-align:right; }
-    .items-table .text-center { text-align:center; }
-    .summary-wrap { display:flex; justify-content:flex-end; margin-top:18px; }
-    .summary-box { width:320px; background:#f9fafb; border:1px solid #ececec; border-radius:6px; padding:14px; font-size:13px; }
-    .summary-row { display:flex; justify-content:space-between; padding:6px 0; color:#111827; }
-    .summary-row.small { font-size:12px; color:rgba(0,0,0,0.7); }
-    .balance { font-weight:800; color:#7b2540; font-size:16px; margin-top:8px; }
-    .notes { margin-top:14px; background:#f9fafb; padding:12px; border-radius:6px; border:1px solid #ececec; font-size:13px; }
-    @page { size: ${pageSize} portrait; margin: 10mm; }
-  `;
+const compactCss = `
+  /* Reset for print */
+  html, body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; font-size:10px; }
+  body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111827; }
+
+  /* Invoice card */
+  .invoice-card { 
+    box-sizing: border-box; 
+    width:100%; 
+    max-width:700px; 
+    margin:10px auto; 
+    padding:16px; 
+    background:#ffffff; 
+    border:1px solid #e6e6e6; 
+    border-radius:4px; 
+  }
+
+  /* Header */
+  .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .invoice-left { display:flex; align-items:center; gap:8px; }
+  .company-logo { height:40px; width:auto; object-fit:contain; }
+  .company-name { font-size:14px; font-weight:700; line-height:1.1; }
+  .company-meta { font-size:8px; color:rgba(0,0,0,0.65); margin-top:1px; }
+  .invoice-right { text-align:right; }
+  .invoice-type { font-size:16px; font-weight:700; letter-spacing:0.3px; }
+  .invoice-meta { margin-top:4px; display:inline-block; background:#f3f4f6; padding:4px 6px; border-radius:3px; font-size:8px; color:#111827; }
+
+  /* Bill To block */
+  .bill-to { margin-top:8px; background:#f9fafb; padding:8px; border-radius:3px; border:1px solid #f1f1f1; font-size:9px; color:#111827; }
+
+  /* Items table */
+  .items-table { width:100%; border-collapse:collapse; margin-top:8px; font-size:9px; }
+  .items-table thead tr { background:#6b2135; color:#fff; }
+  .items-table th, .items-table td { padding:4px 4px; border-bottom:1px solid #eee; vertical-align:top; }
+  .items-table th { font-weight:700; font-size:9px; text-align:left; }
+  .items-table td { color:#111827; }
+  .items-table .text-right { text-align:right; }
+  .items-table .text-center { text-align:center; }
+
+  /* Summary box */
+  .summary-wrap { display:flex; justify-content:flex-end; margin-top:8px; }
+  .summary-box { width:200px; background:#f9fafb; border:1px solid #ececec; border-radius:4px; padding:6px; font-size:9px; }
+  .summary-row { display:flex; justify-content:space-between; padding:2px 0; color:#111827; }
+  .summary-row.small { font-size:8px; color:rgba(0,0,0,0.7); }
+  .balance { font-weight:700; color:#7b2540; font-size:12px; margin-top:4px; }
+
+  /* Notes */
+  .notes { margin-top:6px; background:#f9fafb; padding:6px; border-radius:3px; border:1px solid #ececec; font-size:9px; }
+
+  /* Utility classes */
+  .kv { font-size:8px; color:rgba(0,0,0,0.65); }
+  .small { font-size:8px; color:rgba(0,0,0,0.65); }
+
+  /* Print page size and margins */
+  @media print {
+    @page { size: ${pageSize} portrait; margin:6mm; }
+    body { margin: 0; }
+    .invoice-card { box-shadow:none !important; }
+  }
+`;
+
+
 
   // Clone the invoice HTML and inject styles so html2pdf captures it correctly
   const invoiceClone = componentRef.current.cloneNode(true) as HTMLElement;
@@ -206,7 +253,7 @@ export default function InlineInvoiceView({
     <html>
       <head>
         ${styles}
-        <style>${pdfCss}</style>
+        <style>${compactCss}</style>
       </head>
       <body>
         ${invoiceClone.outerHTML}
@@ -337,7 +384,7 @@ export default function InlineInvoiceView({
               <img
                 src={companyLogo}
                 alt="Company logo"
-                className="h- w-auto object-contain"
+                className="h-24 w-auto object-contain"
               />
             ) : (
               <div className="h-16 w-16 rounded-md bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center text-sm font-semibold">
