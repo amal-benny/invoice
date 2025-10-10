@@ -13,20 +13,52 @@ router.get("/balance", auth, async (req, res) => {
   res.json(balances);
 });
 
+// --- Create starting balance (only one per method) ---
 router.post("/balance", auth, async (req, res) => {
-  const { amount } = req.body;
-  const balance = await prisma.startingBalance.create({
-    data: { amount: parseFloat(amount), createdById: req.user.id },
+  const { amount, method } = req.body; // method = "Cash" | "Bank"
+
+  // Check if balance already exists for this user & method
+  const existing = await prisma.startingBalance.findFirst({
+    where: { createdById: req.user.id, method },
   });
+
+  if (existing) {
+    return res.status(400).json({ 
+      message: `Starting balance for ${method} already exists. Use PUT to update.` 
+    });
+  }
+
+  const balance = await prisma.startingBalance.create({
+    data: { 
+      amount: parseFloat(amount), 
+      method,
+      createdById: req.user.id 
+    },
+  });
+
   res.json(balance);
 });
 
+// --- Update starting balance ---
 router.put("/balance/:id", auth, async (req, res) => {
-  const { amount } = req.body;
+  const { amount, method } = req.body;
+
+  // Optional: ensure the method change does not conflict with existing balance
+  const conflict = await prisma.startingBalance.findFirst({
+    where: { createdById: req.user.id, method, id: { not: parseInt(req.params.id) } }
+  });
+
+  if (conflict) {
+    return res.status(400).json({
+      message: `Another starting balance for ${method} already exists.`
+    });
+  }
+
   const balance = await prisma.startingBalance.update({
     where: { id: parseInt(req.params.id) },
-    data: { amount: parseFloat(amount) },
+    data: { amount: parseFloat(amount), method },
   });
+
   res.json(balance);
 });
 
@@ -50,9 +82,31 @@ router.get("/", auth, async (req, res) => {
 
   const transactions = await prisma.transaction.findMany({
     where: filter,
-    orderBy: { date: "desc" },
+    orderBy: { date: "asc" }, // ASC to calculate running balance
   });
-  res.json(transactions);
+
+  // Fetch starting balances
+  const balances = await prisma.startingBalance.findMany({
+    where: { createdById: req.user.id },
+  });
+
+  let cashBalance = balances.filter(b => b.method === "Cash").reduce((a,b)=>b.amount,0);
+  let bankBalance = balances.filter(b => b.method === "Bank").reduce((a,b)=>b.amount,0);
+
+  let runningBalanceCash = cashBalance;
+  let runningBalanceBank = bankBalance;
+
+  const txWithClosing = transactions.map(tx => {
+    if(tx.method === "Cash") {
+      runningBalanceCash += tx.type === "INCOME" ? tx.amount : -tx.amount;
+      return { ...tx, closingBalance: runningBalanceCash };
+    } else {
+      runningBalanceBank += tx.type === "INCOME" ? tx.amount : -tx.amount;
+      return { ...tx, closingBalance: runningBalanceBank };
+    }
+  });
+
+  res.json(txWithClosing);
 });
 
 router.post("/", auth, async (req, res) => {

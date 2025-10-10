@@ -24,7 +24,7 @@ function fromCents(cents: number) {
 
 export default function InvoiceForm({
   onCreated,
-  initialInvoice, // <-- edit mode prop
+  initialInvoice,
 }: {
   onCreated?: (inv: any) => void;
   initialInvoice?: any;
@@ -34,12 +34,11 @@ export default function InvoiceForm({
   // metadata
   const [settings, setSettings] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]); // Quotation categories
 
-  // default tax values from settings
   const [defaultTax, setDefaultTax] = useState<number | undefined>(undefined);
   const [defaultTaxType, setDefaultTaxType] = useState<string>("GST");
 
-  // form state
   const [type, setType] = useState<"INVOICE" | "QUOTE">(
     initialInvoice?.type || "QUOTE"
   );
@@ -82,7 +81,6 @@ export default function InvoiceForm({
     initialInvoice?.remark || ""
   );
 
-  // right card
   const [advancePayment, setAdvancePayment] = useState<number>(
     initialInvoice?.advancePaid || 0
   );
@@ -102,11 +100,22 @@ export default function InvoiceForm({
   const [customerPhone, setCustomerPhone] = useState(
     initialInvoice?.customer?.phone || ""
   );
+  const [customerstateName, setCustomerStateName] = useState(
+    initialInvoice?.customer?.statename || ""
+  );
+  const [customerstateCode, setCustomerStateCode] = useState(
+    initialInvoice?.customer?.statecode || ""
+  );
   const [customerAddress, setCustomerAddress] = useState(
     initialInvoice?.customer?.address || ""
   );
+ const [cashBalance, setCashBalance] = useState<number>(0);
+const [bankBalance, setBankBalance] = useState<number>(0);
+const [totalIncome, setTotalIncome] = useState<number>(0);
+const [closingBalance, setClosingBalance] = useState<number>(0);
 
-  // load settings & customers
+
+  // Load settings, customers, and quotation categories
   useEffect(() => {
     (async () => {
       try {
@@ -133,10 +142,15 @@ export default function InvoiceForm({
         const c = await authFetch("/api/customers");
         setCustomers(c || []);
       } catch (e) {}
+
+      try {
+        const cats = await authFetch("/api/quotation-categories");
+        setCategories(cats || []);
+      } catch (e) {}
     })();
   }, []);
 
-  // item helpers
+  // Item helpers
   function updateItem(idx: number, patch: Partial<Item>) {
     const copy = [...items];
     copy[idx] = { ...copy[idx], ...patch };
@@ -251,7 +265,6 @@ export default function InvoiceForm({
     try {
       let inv;
       if (initialInvoice?.id) {
-        // <-- Edit mode uses PUT
         inv = await authFetch(`/api/invoices/${initialInvoice.id}`, {
           method: "PUT",
           body: JSON.stringify(payload),
@@ -266,6 +279,17 @@ export default function InvoiceForm({
       }
 
       if (onCreated) onCreated(inv);
+      
+       // 1. Update dashboard balances for advance
+    if (totals.advanceTotal > 0) {
+      if (advanceMethod === "Cash") setCashBalance(prev => prev + totals.advanceTotal);
+      else setBankBalance(prev => prev + totals.advanceTotal);
+
+      const newTotal = cashBalance + bankBalance + totals.advanceTotal;
+      setTotalIncome(newTotal);
+      setClosingBalance(newTotal);
+    }
+
     } catch (err: any) {
       alert("Failed to save: " + (err?.message || JSON.stringify(err)));
     } finally {
@@ -325,6 +349,18 @@ export default function InvoiceForm({
                     value={settings?.panNumber ?? ""}
                     readOnly
                   />
+                  <input
+                    className="input"
+                    placeholder="State Name"
+                    value={settings?.stateName ?? ""}
+                    readOnly
+                  />
+                  <input
+                    className="input"
+                    placeholder="State Code"
+                    value={settings?.stateCode ?? ""}
+                    readOnly
+                  />
 
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -369,6 +405,8 @@ export default function InvoiceForm({
                         setCustomerCompany(selected.company || "");
                         setCustomerEmail(selected.email || "");
                         setCustomerPhone(selected.phone || "");
+                        setCustomerStateName(selected.stateName || "");
+                        setCustomerStateCode(selected.stateCode || "");
                         setCustomerAddress(selected.address || "");
                       } else {
                         // clear if no selection
@@ -376,7 +414,10 @@ export default function InvoiceForm({
                         setCustomerCompany("");
                         setCustomerEmail("");
                         setCustomerPhone("");
+                        setCustomerStateName("");
+                        setCustomerStateCode("");
                         setCustomerAddress("");
+                       
                       }
                     }}
                   >
@@ -410,6 +451,18 @@ export default function InvoiceForm({
                     placeholder="Phone"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
+                  />
+                   <input
+                    className="input"
+                    placeholder="State Name"
+                    value={customerstateName}
+                    onChange={(e) => setCustomerStateName(e.target.value)}
+                  />
+                   <input
+                    className="input"
+                    placeholder="State Code"
+                    value={customerstateCode}
+                    onChange={(e) => setCustomerStateCode(e.target.value)}
                   />
                   <textarea
                     className="input"
@@ -451,149 +504,160 @@ export default function InvoiceForm({
                 </div>
               </div>
             </div>
+<div className="card">
+  <h3 className="text-lg font-semibold mb-4">Line Items</h3>
 
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Line Items</h3>
+  {/* Header */}
+  <div className="hidden md:grid grid-cols-12 gap-2 text-sm text-gray-600 font-medium border-b pb-2 mb-3">
+    <div className="col-span-2 text-center">Category</div>
+    <div className="col-span-3 text-center">Description</div>
+    <div className="col-span-1 text-center">Price</div>
+    <div className="col-span-1">HSN/SAC</div>
+    <div className="col-span-1 text-center">Qty</div>
+    <div className="col-span-1 text-center">Discount</div>
+    <div className="col-span-1 text-center">Tax % ({defaultTaxType || "GST"})</div>
+    <div className="col-span-2">Remark</div>
+    {/* <div className="col-span-1 text-center">Remove</div>
+    <div className="col-span-1 text-right">Total</div> */}
+  </div>
 
-              {/* Header */}
-              <div className="hidden md:grid grid-cols-12 gap-2 text-sm text-gray-600 font-medium border-b pb-2 mb-3">
-                <div className="col-span-3">Description</div>
-                <div className="col-span-1 text-center">Qty</div>
-                <div className="col-span-1 text-right">Price</div>
-                <div className="col-span-1 text-right">Discount</div>
-                <div className="col-span-1 text-right">
-                  Tax % ({defaultTaxType || "GST"})
-                </div>
-                <div className="col-span-1">Category</div>
-                <div className="col-span-1">HSN</div>
-                <div className="col-span-2">Remark</div>
-                <div className="col-span-1 text-right">Total</div>
-              </div>
+  {/* Items */}
+  {items.map((it, idx) => (
+    <div
+      key={idx}
+      className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg shadow-sm"
+    >
+      {/* Category */}
+      <select
+        className="input col-span-2"
+        value={it.category || ""}
+        onChange={(e) => {
+          const selectedCat = categories.find(
+            (c) => c.category === e.target.value
+          );
+          if (selectedCat) {
+            updateItem(idx, {
+              category: selectedCat.category,
+              description: selectedCat.description,
+              price: selectedCat.price,
+              hsn: selectedCat.hsn,
+            });
+          } else {
+            updateItem(idx, { category: e.target.value });
+          }
+        }}
+      >
+        <option value="">Pick category</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.category}>
+            {c.category}
+          </option>
+        ))}
+      </select>
 
-              {/* Items */}
-              <div className="space-y-4">
-                {items.map((it, idx) => (
-                  <div
-                    key={idx}
-                    className="grid grid-cols-12 gap-2 items-start bg-gray-50 p-3 rounded-lg shadow-sm"
-                  >
-                    <input
-                      className="input col-span-3"
-                      placeholder="Item description..."
-                      value={it.description}
-                      onChange={(e) =>
-                        updateItem(idx, { description: e.target.value })
-                      }
-                    />
+      {/* Description */}
+      <input
+        className="input col-span-3"
+        placeholder="Item description..."
+        value={it.description}
+        onChange={(e) => updateItem(idx, { description: e.target.value })}
+      />
 
-                    <input
-                      className="input col-span-1 text-center"
-                      type="number"
-                      min={1}
-                      value={it.quantity}
-                      onChange={(e) =>
-                        updateItem(idx, {
-                          quantity: Number(e.target.value || 1),
-                        })
-                      }
-                    />
+      {/* Price */}
+      <input
+        className="input col-span-1 text-right"
+        type="number"
+        step="0.01"
+        value={it.price}
+        onChange={(e) => updateItem(idx, { price: Number(e.target.value || 0) })}
+      />
 
-                    <input
-                      className="input col-span-1 text-right"
-                      type="number"
-                      step="0.01"
-                      value={it.price}
-                      onChange={(e) =>
-                        updateItem(idx, { price: Number(e.target.value || 0) })
-                      }
-                    />
+      {/* HSN */}
+      <input
+        className="input col-span-1"
+        placeholder="HSN"
+        value={it.hsn ?? ""}
+        onChange={(e) => updateItem(idx, { hsn: e.target.value })}
+      />
 
-                    <input
-                      className="input col-span-1 text-right"
-                      type="number"
-                      step="0.01"
-                      value={it.discount ?? ""}
-                      placeholder="0"
-                      onChange={(e) =>
-                        updateItem(idx, {
-                          discount:
-                            e.target.value === ""
-                              ? undefined
-                              : Number(e.target.value),
-                        })
-                      }
-                    />
+      {/* Qty */}
+      <input
+        className="input col-span-1 text-center"
+        type="number"
+        min={1}
+        value={it.quantity}
+        onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 1) })}
+      />
 
-                    <input
-                      className="input col-span-1 text-right"
-                      type="number"
-                      step="0.01"
-                      value={it.gstPercent ?? ""}
-                      placeholder={
-                        defaultTax !== undefined ? String(defaultTax) : "0"
-                      }
-                      onChange={(e) =>
-                        updateItem(idx, {
-                          gstPercent:
-                            e.target.value === ""
-                              ? undefined
-                              : Number(e.target.value),
-                        })
-                      }
-                    />
+      {/* Discount */}
+      <input
+        className="input col-span-1 text-right"
+        type="number"
+        step="0.01"
+        value={it.discount ?? ""}
+        placeholder="0"
+        onChange={(e) =>
+          updateItem(idx, {
+            discount: e.target.value === "" ? undefined : Number(e.target.value),
+          })
+        }
+      />
 
-                    <input
-                      className="input col-span-1"
-                      placeholder="Category"
-                      value={it.category ?? ""}
-                      onChange={(e) =>
-                        updateItem(idx, { category: e.target.value })
-                      }
-                    />
+      {/* Tax */}
+      <input
+        className="input col-span-1 text-right"
+        type="number"
+        step="0.01"
+        value={it.gstPercent ?? ""}
+        placeholder={defaultTax !== undefined ? String(defaultTax) : "0"}
+        onChange={(e) =>
+          updateItem(idx, {
+            gstPercent: e.target.value === "" ? undefined : Number(e.target.value),
+          })
+        }
+      />
 
-                    <input
-                      className="input col-span-1"
-                      placeholder="HSN"
-                      value={it.hsn ?? ""}
-                      onChange={(e) => updateItem(idx, { hsn: e.target.value })}
-                    />
+      {/* Remark */}
+      <input
+        className="input col-span-2"
+        placeholder="Item remark"
+        value={it.remark ?? ""}
+        onChange={(e) => updateItem(idx, { remark: e.target.value })}
+      />
 
-                    <input
-                      className="input col-span-2"
-                      placeholder="Item remark"
-                      value={it.remark ?? ""}
-                      onChange={(e) =>
-                        updateItem(idx, { remark: e.target.value })
-                      }
-                    />
+      {/* Remove */}
+      <div className="col-span-1 text-center">
+        <button
+          type="button"
+          className="text-xs px-2 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-50"
+          onClick={() => removeItem(idx)}
+        >
+          Remove
+        </button>
+      </div>
 
-                    <div className="col-span-1 text-right flex flex-col justify-between">
-                      <div className="font-semibold">
-                        {currency} {lineTotal(it).toFixed(2)}
-                      </div>
-                      <button
-                        type="button"
-                        className="mt-2 text-xs px-2 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-50"
-                        onClick={() => removeItem(idx)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
+      {/* Total */}
+      <div className="col-span-1 text-right font-semibold">
+        {currency} {lineTotal(it).toFixed(2)}
+      </div>
+    </div>
+  ))}
 
-                {/* Add button */}
-                <div>
-                  <button
-                    type="button"
-                    onClick={addItem}
-                    className="w-full py-2 rounded-md border-dashed border-2 border-red-200 text-red-600"
-                  >
-                    + Add New Item
-                  </button>
-                </div>
-              </div>
-            </div>
+  {/* Totals & Add Item */}
+  <div className="mt-3 flex flex-col items-end gap-2">
+    <div className="text-right font-semibold">
+      Total: {currency} {totals.total.toFixed(2)}
+    </div>
+    <button
+      type="button"
+      onClick={addItem}
+      className="w-full py-2 rounded-md border-dashed border-2 border-red-200 text-red-600"
+    >
+      + Add New Item
+    </button>
+  </div>
+</div>
+
           </div>
 
           <div className="space-y-6">
@@ -691,32 +755,6 @@ export default function InvoiceForm({
                     Reset
                   </button>
                 </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <h4 className="font-semibold">Actions</h4>
-              <p className="kv text-sm mb-3">
-                After saving you can preview, convert to invoice or print from
-                the Professional Invoice Maker.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="px-3 py-2 rounded-md border w-full"
-                  onClick={() => {
-                    /* quick draft */
-                  }}
-                >
-                  Save Draft
-                </button>
-                <button
-                  type="button"
-                  className="btn w-full"
-                  onClick={() => submit()}
-                >
-                  Quick Save
-                </button>
               </div>
             </div>
           </div>

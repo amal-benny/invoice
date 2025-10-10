@@ -10,6 +10,8 @@ const paymentRoutes = require("./routes/payments");
 const settingsRoutes = require("./routes/settings");
 const reportsRoutes = require("./routes/reports");
 const transactionsRoutes = require("./routes/transactions");
+const quotationCategoriesRoutes = require("./routes/quotationCategories");
+const paymentLedgersRoutes = require("./routes/paymentLedgers");
 const path = require("path");
 
 
@@ -29,5 +31,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/transactions", transactionsRoutes);
+app.use("/api/quotation-categories", quotationCategoriesRoutes);
+app.use("/api/payment-ledgers", paymentLedgersRoutes);
 
 module.exports = app;

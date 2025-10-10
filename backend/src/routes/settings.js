@@ -50,7 +50,7 @@ router.get("/", auth, async (req, res, next) => {
 // POST create/update settings
 router.post("/", auth, upload.single("logo"), async (req, res, next) => {
   try {
-    const { name, address, contact, gstNumber,panNumber, currency, taxPercent, taxType } = req.body;
+    const { name, address, contact, gstNumber,panNumber, currency, taxPercent, taxType,stateName, stateCode  } = req.body;
     const logoPath = req.file ? `/uploads/${req.file.filename}` : undefined;
 
     let existing = await prisma.companySettings.findFirst({
@@ -65,6 +65,8 @@ router.post("/", auth, upload.single("logo"), async (req, res, next) => {
       gstNumber,
       panNumber, 
       currency,
+      stateName,
+      stateCode ,
       taxPercent: taxPercent ? parseFloat(taxPercent) : undefined,
       taxType: taxType || undefined,
     };

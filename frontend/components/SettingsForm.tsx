@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
+import QuotationCategories from "../components/QuotationCategories";
+import PaymentLedgers from "../components/PaymentLedgers";
 
 export default function SettingsForm({
   initialSettings,
@@ -19,6 +21,8 @@ export default function SettingsForm({
     gstNumber: initialSettings?.gstNumber || "",
     panNumber: initialSettings?.panNumber || "",
     currency: initialSettings?.currency || "INR",
+    stateName: initialSettings?.stateName || "", // NEW
+    stateCode: initialSettings?.stateCode || "",
     taxPercent:
       initialSettings?.taxPercent !== undefined &&
       initialSettings?.taxPercent !== null
@@ -45,6 +49,8 @@ export default function SettingsForm({
               gstNumber: s.gstNumber || "",
               panNumber: s.panNumber || "",
               currency: s.currency || "INR",
+              stateName: s.stateName || "",
+              stateCode: s.stateCode || "",
               taxPercent:
                 s.taxPercent !== undefined && s.taxPercent !== null
                   ? String(s.taxPercent)
@@ -98,6 +104,9 @@ export default function SettingsForm({
     fd.append("gstNumber", form.gstNumber);
     fd.append("panNumber", form.panNumber);
     fd.append("currency", form.currency);
+    fd.append("stateName", form.stateName);
+    fd.append("stateCode", form.stateCode);
+
     if (form.taxPercent) fd.append("taxPercent", form.taxPercent);
     if (form.taxType) fd.append("taxType", form.taxType);
     if (logoFile) fd.append("logo", logoFile);
@@ -126,7 +135,9 @@ export default function SettingsForm({
   }
 
   return (
+    <>
     <div className="card">
+      <h3 className="text-lg font-semibold mb-3">Company Details</h3>
       <form onSubmit={submit} className="grid grid-cols-2 gap-3">
         <input
           className="input"
@@ -159,16 +170,32 @@ export default function SettingsForm({
           value={form.panNumber}
           onChange={(e) => setForm({ ...form, panNumber: e.target.value })}
         />
+        <input
+          className="input"
+          placeholder="State Name"
+          value={form.stateName}
+          onChange={(e) => setForm({ ...form, stateName: e.target.value })}
+        />
+        <input
+          className="input"
+          placeholder="State Code"
+          value={form.stateCode}
+          onChange={(e) => setForm({ ...form, stateCode: e.target.value })}
+        />
+
+       
 
         <select
           className="input"
-          value={form.currency}
-          onChange={(e) => setForm({ ...form, currency: e.target.value })}
+          value={form.taxType}
+          onChange={(e) => setForm({ ...form, taxType: e.target.value })}
         >
-          <option value="INR">INR</option>
-          <option value="USD">USD</option>
-          <option value="EUR">EUR</option>
+          <option value="GST">GST</option>
+          <option value="VAT">VAT</option>
+          <option value="SalesTax">Sales Tax</option>
         </select>
+
+        
 
         <input
           className="input"
@@ -178,14 +205,14 @@ export default function SettingsForm({
           value={form.taxPercent}
           onChange={(e) => setForm({ ...form, taxPercent: e.target.value })}
         />
-        <select
+         <select
           className="input"
-          value={form.taxType}
-          onChange={(e) => setForm({ ...form, taxType: e.target.value })}
+          value={form.currency}
+          onChange={(e) => setForm({ ...form, currency: e.target.value })}
         >
-          <option value="GST">GST</option>
-          <option value="VAT">VAT</option>
-          <option value="SalesTax">Sales Tax</option>
+          <option value="INR">INR</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
         </select>
 
         <div>
@@ -204,7 +231,10 @@ export default function SettingsForm({
         <div className="col-span-2 flex justify-end">
           <button className="btn">Save Settings</button>
         </div>
-      </form>
+      </form> 
     </div>
+    <QuotationCategories />
+      <PaymentLedgers />
+    </>
   );
 }

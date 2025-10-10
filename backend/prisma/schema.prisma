@@ -38,7 +38,8 @@ model User {
   Transactions Transaction[]
   StartingBalances StartingBalance[]
   settings CompanySettings[]
-  
+  QuotationCategorys QuotationCategory[]
+  PaymentLedgers  PaymentLedger[]
 }
 
 
@@ -55,6 +56,8 @@ model Customer {
   email     String?
   phone     String?
   address   String?
+  stateName    String?        // ✅ added
+  stateCode    String? 
   status    PaymentStatus @default(UNPAID)
   invoices  Invoice[]
   createdAt DateTime  @default(now())
@@ -126,6 +129,8 @@ model CompanySettings {
   taxType    String?   // NEW: "GST" | "VAT" | "TAX" etc.
   currency   String  @default("INR")
   logoPath   String? // path to uploaded logo
+  stateName  String?    // NEW
+  stateCode  String?
   createdAt  DateTime @default(now())
   userId     Int      // link to the user
   user       User     @relation(fields: [userId], references: [id])
@@ -148,9 +153,30 @@ model Transaction {
 model StartingBalance {
   id        Int      @id @default(autoincrement())
   amount    Float
+  method      String 
   date      DateTime @default(now())
   createdBy User     @relation(fields: [createdById], references: [id])
   createdById Int
+}
+
+
+model QuotationCategory {
+  id          Int      @id @default(autoincrement())
+  category    String
+  description String?
+  hsn         String?   // HSN code (optional)
+  price       Float?    // price (optional)
+  createdAt   DateTime @default(now())
+  createdById Int
+  createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
+model PaymentLedger {
+  id          Int      @id @default(autoincrement())
+  category    String
+  createdAt   DateTime @default(now())
+  createdById Int
+  createdBy   User     @relation(fields: [createdById], references: [id])
 }
 
 
