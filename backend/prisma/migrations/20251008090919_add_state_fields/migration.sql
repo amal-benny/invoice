@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `companysettings` ADD COLUMN `stateCode` VARCHAR(191) NULL,
+    ADD COLUMN `stateName` VARCHAR(191) NULL;
