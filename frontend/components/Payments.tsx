@@ -5,7 +5,6 @@ import { Wallet, CreditCard, TrendingUp, DollarSign } from "lucide-react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
-
 type TransactionType = "INCOME" | "EXPENSE";
 
 interface Transaction {
@@ -27,31 +26,87 @@ interface Balance {
   date: string;
 }
 
+type Ledger = {
+  id: number;
+  category: string;
+};
+
 // Add this helper at the top of your file
 function numberToWords(num: number): string {
-  if (!num && num !== 0) return '';
+  if (!num && num !== 0) return "";
   num = Math.floor(num);
-  const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
-  const b = ['', '', 'Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  const a = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const b = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
 
   function inWords(n: number): string {
     if (n < 20) return a[n];
-    if (n < 100) return b[Math.floor(n/10)] + (n%10 ? ' ' + a[n%10] : '');
-    if (n < 1000) return a[Math.floor(n/100)] + ' Hundred' + (n%100 ? ' ' + inWords(n%100) : '');
-    if (n < 100000) return inWords(Math.floor(n/1000)) + ' Thousand' + (n%1000 ? ' ' + inWords(n%1000) : '');
-    if (n < 10000000) return inWords(Math.floor(n/100000)) + ' Lakh' + (n%100000 ? ' ' + inWords(n%100000) : '');
-    return inWords(Math.floor(n/10000000)) + ' Crore' + (n%10000000 ? ' ' + inWords(n%10000000) : '');
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    if (n < 1000)
+      return (
+        a[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? " " + inWords(n % 100) : "")
+      );
+    if (n < 100000)
+      return (
+        inWords(Math.floor(n / 1000)) +
+        " Thousand" +
+        (n % 1000 ? " " + inWords(n % 1000) : "")
+      );
+    if (n < 10000000)
+      return (
+        inWords(Math.floor(n / 100000)) +
+        " Lakh" +
+        (n % 100000 ? " " + inWords(n % 100000) : "")
+      );
+    return (
+      inWords(Math.floor(n / 10000000)) +
+      " Crore" +
+      (n % 10000000 ? " " + inWords(n % 10000000) : "")
+    );
   }
 
-  return inWords(num) || 'Zero';
+  return inWords(num) || "Zero";
 }
-
 
 export default function Payments() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [newBalance, setNewBalance] = useState<number>(0);
   const [newMethod, setNewMethod] = useState<"Cash" | "Bank">("Cash");
+  const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null);
 
   const [txnForm, setTxnForm] = useState({
@@ -63,6 +118,7 @@ export default function Payments() {
     method: "Cash" as "Cash" | "Bank",
     reference: "",
   });
+  const [useOtherCategory, setUseOtherCategory] = useState(false);
 
   const [search, setSearch] = useState({ type: "", category: "", date: "" });
   const [stats, setStats] = useState({
@@ -77,7 +133,10 @@ export default function Payments() {
     bankNet: 0,
     bankClosing: 0,
   });
-   const [downloadRange, setDownloadRange] = useState<{ startDate?: string; endDate?: string }>({
+  const [downloadRange, setDownloadRange] = useState<{
+    startDate?: string;
+    endDate?: string;
+  }>({
     startDate: "",
     endDate: "",
   });
@@ -85,11 +144,21 @@ export default function Payments() {
   useEffect(() => {
     loadBalances();
     loadTransactions();
+    loadLedgers();
   }, []);
 
   useEffect(() => {
     calculateSummary();
   }, [transactions, balances]);
+
+  async function loadLedgers() {
+    try {
+      const data: Ledger[] = await authFetch("/api/payment-ledgers");
+      if (Array.isArray(data)) setLedgers(data);
+    } catch (err) {
+      console.error("Failed to load ledgers", err);
+    }
+  }
 
   // --- Load balances ---
   async function loadBalances() {
@@ -155,6 +224,7 @@ export default function Payments() {
       method: "Cash",
       reference: "",
     });
+    setUseOtherCategory(false);
 
     loadTransactions();
   }
@@ -197,9 +267,10 @@ export default function Payments() {
     });
   }
 
-
-function downloadExcel() {
-    const start = downloadRange.startDate ? new Date(downloadRange.startDate) : null;
+  function downloadExcel() {
+    const start = downloadRange.startDate
+      ? new Date(downloadRange.startDate)
+      : null;
     const end = downloadRange.endDate ? new Date(downloadRange.endDate) : null;
 
     const filtered = transactions.filter((tx) => {
@@ -224,32 +295,39 @@ function downloadExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Transactions");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(new Blob([buf], { type: "application/octet-stream" }), "transactions.xlsx");
+    saveAs(
+      new Blob([buf], { type: "application/octet-stream" }),
+      "transactions.xlsx"
+    );
   }
 
   function printRow(tx: Transaction) {
-  // load settings (saved by SettingsForm into localStorage)
-  let settings: any = null;
-  try {
-    const s = localStorage.getItem("settings");
-    if (s) settings = JSON.parse(s);
-  } catch (e) {
-    console.error("Failed to read settings from localStorage", e);
-  }
+    // load settings (saved by SettingsForm into localStorage)
+    let settings: any = null;
+    try {
+      const s = localStorage.getItem("settings");
+      if (s) settings = JSON.parse(s);
+    } catch (e) {
+      console.error("Failed to read settings from localStorage", e);
+    }
 
-  const logoUrl = settings?.logoPreview || "";
-  const companyName = settings?.name || "Company Name";
-  const companyAddress = settings?.address || "";
-  const companyContact = settings?.contact || "";
-  const companyEmail = settings?.email || "";
-  const stateName = settings?.stateName || "";
-  const gst = settings?.gstNumber || "";
-  const heading = tx.type === "INCOME" ? "Receipt Voucher" : "Payment Voucher";
-  const voucherNo = tx.id ?? "";
-  const dateStr = tx.date ? new Date(tx.date).toLocaleDateString() : new Date().toLocaleDateString();
-  const amountFormatted = typeof tx.amount === "number" ? tx.amount.toFixed(2) : tx.amount;
+    const logoUrl = settings?.logoPreview || "";
+    const companyName = settings?.name || "Company Name";
+    const companyAddress = settings?.address || "";
+    const companyContact = settings?.contact || "";
+    const companyEmail = settings?.email || "";
+    const stateName = settings?.stateName || "";
+    const gst = settings?.gstNumber || "";
+    const heading =
+      tx.type === "INCOME" ? "Receipt Voucher" : "Payment Voucher";
+    const voucherNo = tx.id ?? "";
+    const dateStr = tx.date
+      ? new Date(tx.date).toLocaleDateString()
+      : new Date().toLocaleDateString();
+    const amountFormatted =
+      typeof tx.amount === "number" ? tx.amount.toFixed(2) : tx.amount;
 
-  const html = `
+    const html = `
   <!doctype html>
   <html>
     <head>
@@ -377,14 +455,24 @@ function downloadExcel() {
       <div class="page">
         <div class="header">
           <div style="width:90px">
-            ${logoUrl ? `<img src="${logoUrl}" class="logo" alt="logo"/>` : `<div style="width:90px;height:90px;"></div>`}
+            ${
+              logoUrl
+                ? `<img src="${logoUrl}" class="logo" alt="logo"/>`
+                : `<div style="width:90px;height:90px;"></div>`
+            }
           </div>
 
           <div class="company">
             <h1>${companyName}</h1>
             <p>${companyAddress}</p>
             <p>${companyContact} ${companyEmail ? " | " + companyEmail : ""}</p>
-            ${stateName || gst ? `<p style="font-size:11px;">${stateName} ${gst ? "| GST: " + gst : ""}</p>` : ""}
+            ${
+              stateName || gst
+                ? `<p style="font-size:11px;">${stateName} ${
+                    gst ? "| GST: " + gst : ""
+                  }</p>`
+                : ""
+            }
           </div>
 
           <div class="meta">
@@ -463,17 +551,15 @@ function downloadExcel() {
   </html>
   `;
 
-  const w = window.open("", "_blank", "width=800,height=700");
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  } else {
-    alert("Please allow popups for printing.");
+    const w = window.open("", "_blank", "width=800,height=700");
+    if (w) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    } else {
+      alert("Please allow popups for printing.");
+    }
   }
-}
-
-
 
   return (
     <div className="space-y-6">
@@ -598,14 +684,41 @@ function downloadExcel() {
             <option value="INCOME">Income</option>
             <option value="EXPENSE">Expense</option>
           </select>
-          <input
-            className="input"
-            placeholder="Category"
-            value={txnForm.category}
-            onChange={(e) =>
-              setTxnForm({ ...txnForm, category: e.target.value })
-            }
-          />
+          <div>
+            <select
+              className="input w-full"
+              value={useOtherCategory ? "__other__" : txnForm.category}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__other__") {
+                  setUseOtherCategory(true);
+                  setTxnForm({ ...txnForm, category: "" });
+                } else {
+                  setUseOtherCategory(false);
+                  setTxnForm({ ...txnForm, category: v });
+                }
+              }}
+            >
+              <option value="">Select Category</option>
+              {ledgers.map((l) => (
+                <option key={l.id} value={l.category}>
+                  {l.category}
+                </option>
+              ))}
+              <option value="__other__">Other (type manually)</option>
+            </select>
+
+            {useOtherCategory && (
+              <input
+                className="input mt-2"
+                placeholder="Enter category"
+                value={txnForm.category}
+                onChange={(e) =>
+                  setTxnForm({ ...txnForm, category: e.target.value })
+                }
+              />
+            )}
+          </div>
           <input
             className="input"
             type="number"
@@ -658,190 +771,220 @@ function downloadExcel() {
       </div>
 
       {/* --- Transactions List --- */}
-     <div className="space-y-6">
-<div className="card p-4 rounded-lg shadow-sm">
-  <h3 className="font-semibold mb-3">Transactions Filter</h3>
+      <div className="space-y-6">
+        <div className="card p-4 rounded-lg shadow-sm">
+          <h3 className="font-semibold mb-3">Transactions Filter</h3>
 
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    {/* --- Search Fields (left side) --- */}
-    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-      <div>
-        <label className="block text-xs font-medium mb-1">Type</label>
-        <select
-          className="input w-full"
-          value={search.type}
-          onChange={(e) => setSearch({ ...search, type: e.target.value })}
-        >
-          <option value="">All Types</option>
-          <option value="INCOME">Income</option>
-          <option value="EXPENSE">Expense</option>
-        </select>
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* --- Search Fields (left side) --- */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              <div>
+                <label className="block text-xs font-medium mb-1">Type</label>
+                <select
+                  className="input w-full"
+                  value={search.type}
+                  onChange={(e) =>
+                    setSearch({ ...search, type: e.target.value })
+                  }
+                >
+                  <option value="">All Types</option>
+                  <option value="INCOME">Income</option>
+                  <option value="EXPENSE">Expense</option>
+                </select>
+              </div>
 
-      <div>
-        <label className="block text-xs font-medium mb-1">Category</label>
-        <input
-          type="text"
-          className="input w-full"
-          placeholder="Category"
-          value={search.category}
-          onChange={(e) => setSearch({ ...search, category: e.target.value })}
-        />
-      </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  placeholder="Category"
+                  value={search.category}
+                  onChange={(e) =>
+                    setSearch({ ...search, category: e.target.value })
+                  }
+                />
+              </div>
 
-      <div>
-        <label className="block text-xs font-medium mb-1">Date</label>
-        <input
-          type="date"
-          className="input w-full"
-          value={search.date || ""}
-          onChange={(e) => setSearch({ ...search, date: e.target.value })}
-        />
-      </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">Date</label>
+                <input
+                  type="date"
+                  className="input w-full"
+                  value={search.date || ""}
+                  onChange={(e) =>
+                    setSearch({ ...search, date: e.target.value })
+                  }
+                />
+              </div>
 
-      <div className="flex justify-end sm:justify-start">
-        <button className="btn w-full sm:w-auto" onClick={loadTransactions}>
-          Search
-        </button>
-      </div>
-    </div>
-    {/* --- Download Excel (right side) --- */}
-    <div className="flex justify-end">
-      <div className="card p-3 rounded-lg shadow-sm w-full sm:w-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-          <div>
-            <label className="text-xs font-medium mb-1">Start Date</label>
-            <input
-              type="date"
-              className="input w-full sm:w-36"
-              value={downloadRange.startDate || ""}
-              onChange={(e) =>
-                setDownloadRange({ ...downloadRange, startDate: e.target.value })
-              }
-            />
+              <div className="flex justify-end sm:justify-start">
+                <button
+                  className="btn w-full sm:w-auto"
+                  onClick={loadTransactions}
+                >
+                  Search
+                </button>
+              </div>
+            </div>
+            {/* --- Download Excel (right side) --- */}
+            <div className="flex justify-end">
+              <div className="card p-3 rounded-lg shadow-sm w-full sm:w-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                  <div>
+                    <label className="text-xs font-medium mb-1">
+                      Start Date
+                    </label>
+                    <input
+                      type="date"
+                      className="input w-full sm:w-36"
+                      value={downloadRange.startDate || ""}
+                      onChange={(e) =>
+                        setDownloadRange({
+                          ...downloadRange,
+                          startDate: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium mb-1">End Date</label>
+                    <input
+                      type="date"
+                      className="input w-full sm:w-36"
+                      value={downloadRange.endDate || ""}
+                      onChange={(e) =>
+                        setDownloadRange({
+                          ...downloadRange,
+                          endDate: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex justify-end sm:justify-start">
+                    <button
+                      className="btn mt-2 sm:mt-0"
+                      onClick={downloadExcel}
+                    >
+                      Download Excel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
 
-          <div>
-            <label className="text-xs font-medium mb-1">End Date</label>
-            <input
-              type="date"
-              className="input w-full sm:w-36"
-              value={downloadRange.endDate || ""}
-              onChange={(e) =>
-                setDownloadRange({ ...downloadRange, endDate: e.target.value })
-              }
-            />
-          </div>
+        {/* ---------- Third Div: Table with rounded colored rows + action ----------- */}
+        <div className="card p-4 rounded-lg shadow-md bg-white">
+          <h3 className="font-semibold mb-4 text-lg border-b pb-2 text-gray-700">
+            Transactions
+          </h3>
 
-          <div className="flex justify-end sm:justify-start">
-            <button className="btn mt-2 sm:mt-0" onClick={downloadExcel}>
-              Download Excel
-            </button>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+              <thead className="bg-gray-100 text-gray-700">
+                <tr>
+                  <th className="p-3 text-center font-semibold">Type</th>
+                  <th className="p-3 text-center font-semibold">Category</th>
+                  <th className="p-3 text-center font-semibold">Amount</th>
+                  <th className="p-3 text-center font-semibold">Method</th>
+                  <th className="p-3 text-center font-semibold">Closing</th>
+                  <th className="p-3 text-center font-semibold">Date</th>
+                  <th className="p-3 text-center font-semibold">Reference</th>
+                  <th className="p-3 text-center font-semibold">Description</th>
+                  <th className="p-3 text-center font-semibold">Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {transactions.map((tx) => {
+                  const isIncome = tx.type === "INCOME";
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className="border-b last:border-0 hover:bg-gray-50 transition"
+                    >
+                      {/* Type badge only */}
+                      <td className="p-3 align-top text-center">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold  ${
+                            isIncome
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {tx.type}
+                        </span>
+                      </td>
+
+                      <td className="p-3 align-top text-gray-700 text-center">
+                        {tx.category}
+                      </td>
+                      <td className="p-3 text-center align-top text-gray-700 font-medium">
+                        ₹{tx.amount}
+                      </td>
+                      <td className="p-3 align-top text-gray-600 text-center">
+                        {tx.method}
+                      </td>
+                      <td className="p-3 text-center align-top text-gray-600">
+                        ₹{tx.closingBalance ?? "-"}
+                      </td>
+                      <td className="p-3 align-top text-gray-600 text-center">
+                        {new Date(tx.date).toLocaleDateString()}
+                      </td>
+                      <td className="p-3 align-top text-gray-600 text-center">
+                        {tx.reference}
+                      </td>
+                      <td className="p-3 align-top text-gray-600 text-center">
+                        {tx.description}
+                      </td>
+
+                      {/* Action Button */}
+                      <td className="p-3 text-center align-top">
+                        <button
+                          className="text-white text-xs px-3 py-1 rounded-md transition-all"
+                          style={{
+                            backgroundColor: "rgb(128, 41, 73)",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.backgroundColor =
+                              "rgb(110, 30, 60)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.backgroundColor =
+                              "rgb(128, 41, 73)")
+                          }
+                          onClick={() => printRow(tx)}
+                          title="Print this transaction"
+                        >
+                          Print
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {transactions.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="p-5 text-center text-gray-500 bg-gray-50 rounded-b-lg"
+                    >
+                      No transactions found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-</div>
-
-
-
-      {/* ---------- Third Div: Table with rounded colored rows + action ----------- */}
-   <div className="card p-4 rounded-lg shadow-md bg-white">
-  <h3 className="font-semibold mb-4 text-lg border-b pb-2 text-gray-700">
-    Transactions
-  </h3>
-
-  <div className="overflow-x-auto">
-    <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
-      <thead className="bg-gray-100 text-gray-700">
-        <tr>
-          <th className="p-3 text-center font-semibold">Type</th>
-          <th className="p-3 text-center font-semibold">Category</th>
-          <th className="p-3 text-center font-semibold">Amount</th>
-          <th className="p-3 text-center font-semibold">Method</th>
-          <th className="p-3 text-center font-semibold">Closing</th>
-          <th className="p-3 text-center font-semibold">Date</th>
-          <th className="p-3 text-center font-semibold">Reference</th>
-          <th className="p-3 text-center font-semibold">Description</th>
-          <th className="p-3 text-center font-semibold">Action</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {transactions.map((tx) => {
-          const isIncome = tx.type === "INCOME";
-
-          return (
-            <tr
-              key={tx.id}
-              className="border-b last:border-0 hover:bg-gray-50 transition"
-            >
-              {/* Type badge only */}
-              <td className="p-3 align-top text-center">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold  ${
-                    isIncome
-                      ? "bg-green-100 text-green-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {tx.type}
-                </span>
-              </td>
-
-              <td className="p-3 align-top text-gray-700 text-center">{tx.category}</td>
-              <td className="p-3 text-center align-top text-gray-700 font-medium">
-                ₹{tx.amount}
-              </td>
-              <td className="p-3 align-top text-gray-600 text-center">{tx.method}</td>
-              <td className="p-3 text-center align-top text-gray-600">
-                ₹{tx.closingBalance ?? "-"}
-              </td>
-              <td className="p-3 align-top text-gray-600 text-center">
-                {new Date(tx.date).toLocaleDateString()}
-              </td>
-              <td className="p-3 align-top text-gray-600 text-center">{tx.reference}</td>
-              <td className="p-3 align-top text-gray-600 text-center">{tx.description}</td>
-
-              {/* Action Button */}
-              <td className="p-3 text-center align-top">
-                <button
-  className="text-white text-xs px-3 py-1 rounded-md transition-all"
-  style={{
-    backgroundColor: "rgb(128, 41, 73)",
-  }}
-  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgb(110, 30, 60)")}
-  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgb(128, 41, 73)")}
-  onClick={() => printRow(tx)}
-  title="Print this transaction"
->
-  Print
-</button>
-              </td>
-            </tr>
-          );
-        })}
-
-        {transactions.length === 0 && (
-          <tr>
-            <td
-              colSpan={9}
-              className="p-5 text-center text-gray-500 bg-gray-50 rounded-b-lg"
-            >
-              No transactions found.
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-
-
-      </div>
-
     </div>
   );
 }
