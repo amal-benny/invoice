@@ -120,7 +120,7 @@ export default function UserDashboard() {
                   New Quotation
                 </button>
               </div>
-              <DashboardSummary stats={stats} />
+              <DashboardSummary  />
 
               <InvoiceTable
                 invoices={invoices}
