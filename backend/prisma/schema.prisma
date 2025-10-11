@@ -84,6 +84,7 @@ model Invoice {
   totalGST         Float        @default(0)
   advancePaid      Float        @default(0)
   total            Float        @default(0)
+  note             String? 
   status           InvoiceStatus @default(PENDING) // PENDING, PAID, PARTIAL, OVERDUE, CANCELLED
   remark           String?
   currency         String       @default("INR")

@@ -1,4 +1,3 @@
-
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { authFetch } from "../lib/api";
@@ -51,20 +50,18 @@ export default function InlineInvoiceView({
     })();
   }, [invoiceId]);
 
-
-
   const handlePrint = (pageSize: "A4" | "A5" = "A4") => {
-  if (!componentRef.current) return;
+    if (!componentRef.current) return;
 
-  // Optional: include existing <style> and <link> elements from the current document
-  const styles = Array.from(
-    document.querySelectorAll("style, link[rel='stylesheet']")
-  )
-    .map((el) => el.outerHTML)
-    .join("\n");
+    // Optional: include existing <style> and <link> elements from the current document
+    const styles = Array.from(
+      document.querySelectorAll("style, link[rel='stylesheet']")
+    )
+      .map((el) => el.outerHTML)
+      .join("\n");
 
-  // Explicit print CSS (matches invoice container look & layout)
-  const compactCss = `
+    // Explicit print CSS (matches invoice container look & layout)
+    const compactCss = `
   /* Reset for print */
   html, body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; font-size:10px; }
   body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111827; }
@@ -74,8 +71,8 @@ export default function InlineInvoiceView({
     box-sizing: border-box; 
     width:100%; 
     max-width:700px; 
-    margin:10px auto; 
-    padding:16px; 
+    margin:0px auto; 
+    padding:12px; 
     background:#ffffff; 
     border:1px solid #e6e6e6; 
     border-radius:4px; 
@@ -119,25 +116,26 @@ export default function InlineInvoiceView({
 
   /* Print page size and margins */
   @media print {
-    @page { size: ${pageSize} portrait; margin:6mm; }
+    @page { size: ${pageSize} portrait; margin: 3mm; }
     body { margin: 0; }
     .invoice-card { box-shadow:none !important; }
   }
 `;
 
+    // Build the HTML for print window. We wrap the card in a container invoice-card
+    // We take the existing component outerHTML and wrap. Also ensure table classes replaced
+    // so our print CSS applies. (componentRef contains the invoice card already styled with classes)
+    const invoiceHtml = componentRef.current.outerHTML;
 
-  // Build the HTML for print window. We wrap the card in a container invoice-card
-  // We take the existing component outerHTML and wrap. Also ensure table classes replaced
-  // so our print CSS applies. (componentRef contains the invoice card already styled with classes)
-  const invoiceHtml = componentRef.current.outerHTML;
+    const printWindow = window.open("", "", "width=900,height=700");
+    if (!printWindow) return;
 
-  const printWindow = window.open("", "", "width=900,height=700");
-  if (!printWindow) return;
-
-  printWindow.document.write(`
+    printWindow.document.write(`
     <html>
       <head>
-        <title>${invoice ? `Invoice-${invoice.invoiceNumber}` : "Invoice"}</title>
+        <title>${
+          invoice ? `Invoice-${invoice.invoiceNumber}` : "Invoice"
+        }</title>
         ${styles}
         <style>${compactCss}</style>
       </head>
@@ -161,28 +159,28 @@ export default function InlineInvoiceView({
     </html>
   `);
 
-  printWindow.document.close();
+    printWindow.document.close();
 
-  // Wait for images/fonts to load before print (small delay ensures layout is ready)
-  printWindow.focus();
-  setTimeout(() => {
-    printWindow.print();
-    printWindow.close();
-  }, 350);
-};
+    // Wait for images/fonts to load before print (small delay ensures layout is ready)
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 350);
+  };
 
   const handleDownloadPDF = (pageSize: "A4" | "A5" = "A4") => {
-  if (!componentRef.current) return;
+    if (!componentRef.current) return;
 
-  // Capture any <style> and <link> tags from the document (for Tailwind or custom fonts)
-  const styles = Array.from(
-    document.querySelectorAll("style, link[rel='stylesheet']")
-  )
-    .map((el) => el.outerHTML)
-    .join("\n");
+    // Capture any <style> and <link> tags from the document (for Tailwind or custom fonts)
+    const styles = Array.from(
+      document.querySelectorAll("style, link[rel='stylesheet']")
+    )
+      .map((el) => el.outerHTML)
+      .join("\n");
 
-  // Define invoice-specific styling (same as print layout)
-const compactCss = `
+    // Define invoice-specific styling (same as print layout)
+    const compactCss = `
   /* Reset for print */
   html, body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; font-size:10px; }
   body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111827; }
@@ -238,18 +236,16 @@ const compactCss = `
   /* Print page size and margins */
   @media print {
     @page { size: ${pageSize} portrait; margin:6mm; }
-    body { margin: 0; }
+    body { margin: 0;padding: 0; }
     .invoice-card { box-shadow:none !important; }
   }
 `;
 
+    // Clone the invoice HTML and inject styles so html2pdf captures it correctly
+    const invoiceClone = componentRef.current.cloneNode(true) as HTMLElement;
 
-
-  // Clone the invoice HTML and inject styles so html2pdf captures it correctly
-  const invoiceClone = componentRef.current.cloneNode(true) as HTMLElement;
-
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = `
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = `
     <html>
       <head>
         ${styles}
@@ -261,24 +257,23 @@ const compactCss = `
     </html>
   `;
 
-  html2pdf()
-    .set({
-      margin: 10,
-      filename: invoice
-        ? `Invoice-${invoice.invoiceNumber}.pdf`
-        : "invoice.pdf",
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: {
-        unit: "mm",
-        format: pageSize.toLowerCase(),
-        orientation: "portrait",
-      },
-    })
-    .from(wrapper)
-    .save();
-};
-
+    html2pdf()
+      .set({
+        margin: 10,
+        filename: invoice
+          ? `Invoice-${invoice.invoiceNumber}.pdf`
+          : "invoice.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: {
+          unit: "mm",
+          format: pageSize.toLowerCase(),
+          orientation: "portrait",
+        },
+      })
+      .from(wrapper)
+      .save();
+  };
 
   if (!invoiceId) return <div className="p-6">Please select an invoice.</div>;
   if (!invoice) return <div className="p-6">Loading invoice...</div>;
@@ -517,10 +512,12 @@ const compactCss = `
         </div>
 
         {/* Notes */}
-        {invoice.notes && (
+        {(invoice.note || company.defaultNote) && (
           <div className="mt-6 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-700 border border-neutral-100 dark:border-neutral-600">
             <div className="text-sm font-medium mb-2">Notes</div>
-            <div className="text-sm opacity-90">{invoice.notes}</div>
+            <div className="text-sm opacity-90">
+              {invoice.note || company.defaultNote}
+            </div>
           </div>
         )}
       </div>

@@ -588,32 +588,37 @@ export default function CustomerList() {
   // totalDue = sum of invoice.total
   // totalPaid = sum of invoice.advancePaid + sum(invoice.payments[].amount)
   // balance = max(totalDue - totalPaid, 0)
-  function computeCustomerAmounts(customer: any) {
-    const invs = Array.isArray(customer?.invoices) ? customer.invoices : [];
-    let totalDue = 0;
-    let totalPaid = 0;
+ function computeCustomerAmounts(customer: any) {
+  const invs = Array.isArray(customer?.invoices) ? customer.invoices : [];
+  let totalDue = 0;
+  let totalPaid = 0;
 
-    for (const inv of invs) {
-      const invTotal = Number(inv?.total || 0);
-      totalDue += invTotal;
+  for (const inv of invs) {
+    // total the customer wants to pay (subtotal - discount + GST)
+    const subtotal = Number(inv?.subtotal || 0);
+    const gst = Number(inv?.totalGST || 0);
+    const discount = Number(inv?.totalDiscount || 0);
 
-      // Some invoices store advancePaid, and also may have payments array.
-      const advance = Number(inv?.advancePaid || 0);
-      const paymentsSum = Array.isArray(inv?.payments)
-        ? inv.payments.reduce((s: number, p: any) => s + Number(p?.amount || 0), 0)
-        : 0;
+    const invoiceAmount = subtotal - discount + gst;
+    totalDue += invoiceAmount;
 
-      // We sum both advancePaid and payments array to be safe (backend may record advance separately).
-      totalPaid += advance + paymentsSum;
-    }
+    // payments already made
+    const advance = Number(inv?.advancePaid || 0);
+    const paymentsSum = Array.isArray(inv?.payments)
+      ? inv.payments.reduce((s: number, p: any) => s + Number(p?.amount || 0), 0)
+      : 0;
 
-    // ensure numbers and rounding to 2 decimal places
-    totalDue = Math.round(totalDue * 100) / 100;
-    totalPaid = Math.round(totalPaid * 100) / 100;
-    const balance = Math.max(Math.round((totalDue - totalPaid) * 100) / 100, 0);
-
-    return { totalDue, totalPaid, balance };
+    totalPaid += advance + paymentsSum;
   }
+
+  // round numbers
+  totalDue = Math.round(totalDue * 100) / 100;
+  totalPaid = Math.round(totalPaid * 100) / 100;
+  const balance = Math.max(totalDue - totalPaid, 0);
+
+  return { totalDue, totalPaid, balance };
+}
+
 
   // filter customers by search (name or company)
   const filteredCustomers = customers.filter(c => {

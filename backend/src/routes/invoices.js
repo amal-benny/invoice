@@ -45,6 +45,7 @@ router.post("/", auth, async (req, res) => {
     dueDate,
     items = [],
     remark,
+    note,
     currency = "INR",
     advancePaid: frontendAdvance = 0, // <-- global advance from frontend
   } = req.body;
@@ -90,6 +91,7 @@ router.post("/", auth, async (req, res) => {
           total,
           remark,
           currency,
+          note
         },
       });
 
@@ -247,6 +249,7 @@ router.put("/:id", auth, async (req, res) => {
           dueDate: dueDate ? new Date(dueDate) : existing.dueDate,
           remark: remark !== undefined ? remark : existing.remark,
           currency: currency || existing.currency,
+          note: req.body.note !== undefined ? req.body.note : existing.note,
           subtotal,
           totalGST,
           totalDiscount,

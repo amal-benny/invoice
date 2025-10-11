@@ -14,6 +14,7 @@ type Item = {
   remark?: string | null;
   hsn?: string | null;
 };
+type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card";
 
 function toCents(n: number) {
   return Math.round((isNaN(n) ? 0 : n) * 100);
@@ -34,7 +35,8 @@ export default function InvoiceForm({
   // metadata
   const [settings, setSettings] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]); // Quotation categories
+  const [categories, setCategories] = useState<any[]>([]);
+  const [invoiceNote, setInvoiceNote] = useState<string>(""); // Quotation categories
 
   const [defaultTax, setDefaultTax] = useState<number | undefined>(undefined);
   const [defaultTaxType, setDefaultTaxType] = useState<string>("GST");
@@ -109,11 +111,10 @@ export default function InvoiceForm({
   const [customerAddress, setCustomerAddress] = useState(
     initialInvoice?.customer?.address || ""
   );
- const [cashBalance, setCashBalance] = useState<number>(0);
-const [bankBalance, setBankBalance] = useState<number>(0);
-const [totalIncome, setTotalIncome] = useState<number>(0);
-const [closingBalance, setClosingBalance] = useState<number>(0);
-
+  const [cashBalance, setCashBalance] = useState<number>(0);
+  const [bankBalance, setBankBalance] = useState<number>(0);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
+  const [closingBalance, setClosingBalance] = useState<number>(0);
 
   // Load settings, customers, and quotation categories
   useEffect(() => {
@@ -149,6 +150,10 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
       } catch (e) {}
     })();
   }, []);
+
+  useEffect(() => {
+  setInvoiceNote(initialInvoice?.note || settings?.defaultNote || "");
+}, [initialInvoice, settings]);
 
   // Item helpers
   function updateItem(idx: number, patch: Partial<Item>) {
@@ -254,6 +259,7 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
       dueDate: dueDate || undefined,
       items: payloadItems,
       remark: globalRemark || undefined,
+      note: invoiceNote || settings?.defaultNote || undefined,
       currency,
       subtotal: totals.subtotal,
       totalGST: totals.gst,
@@ -279,17 +285,14 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
       }
 
       if (onCreated) onCreated(inv);
-      
-       // 1. Update dashboard balances for advance
-    if (totals.advanceTotal > 0) {
-      if (advanceMethod === "Cash") setCashBalance(prev => prev + totals.advanceTotal);
-      else setBankBalance(prev => prev + totals.advanceTotal);
 
-      const newTotal = cashBalance + bankBalance + totals.advanceTotal;
-      setTotalIncome(newTotal);
-      setClosingBalance(newTotal);
-    }
-
+      // 1. Update dashboard balances for advance
+      if (totals.advanceTotal > 0) {
+        const method = advanceMethod as MethodType;
+        if ((window as any).updateDashboardIncome) {
+          (window as any).updateDashboardIncome(method, totals.advanceTotal);
+        }
+      }
     } catch (err: any) {
       alert("Failed to save: " + (err?.message || JSON.stringify(err)));
     } finally {
@@ -417,7 +420,6 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
                         setCustomerStateName("");
                         setCustomerStateCode("");
                         setCustomerAddress("");
-                       
                       }
                     }}
                   >
@@ -452,13 +454,13 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                   />
-                   <input
+                  <input
                     className="input"
                     placeholder="State Name"
                     value={customerstateName}
                     onChange={(e) => setCustomerStateName(e.target.value)}
                   />
-                   <input
+                  <input
                     className="input"
                     placeholder="State Code"
                     value={customerstateCode}
@@ -504,160 +506,177 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
                 </div>
               </div>
             </div>
-<div className="card">
-  <h3 className="text-lg font-semibold mb-4">Line Items</h3>
+            <div className="card">
+              <h3 className="text-lg font-semibold mb-4">Line Items</h3>
 
-  {/* Header */}
-  <div className="hidden md:grid grid-cols-12 gap-2 text-sm text-gray-600 font-medium border-b pb-2 mb-3">
-    <div className="col-span-2 text-center">Category</div>
-    <div className="col-span-3 text-center">Description</div>
-    <div className="col-span-1 text-center">Price</div>
-    <div className="col-span-1">HSN/SAC</div>
-    <div className="col-span-1 text-center">Qty</div>
-    <div className="col-span-1 text-center">Discount</div>
-    <div className="col-span-1 text-center">Tax % ({defaultTaxType || "GST"})</div>
-    <div className="col-span-2">Remark</div>
-    {/* <div className="col-span-1 text-center">Remove</div>
+              {/* Header */}
+              <div className="hidden md:grid grid-cols-12 gap-2 text-sm text-gray-600 font-medium border-b pb-2 mb-3">
+                <div className="col-span-2 text-center">Category</div>
+                <div className="col-span-3 text-center">Description</div>
+                <div className="col-span-1 text-center">Price</div>
+                <div className="col-span-1">HSN/SAC</div>
+                <div className="col-span-1 text-center">Qty</div>
+                <div className="col-span-1 text-center">Discount</div>
+                <div className="col-span-1 text-center">
+                  Tax % ({defaultTaxType || "GST"})
+                </div>
+                <div className="col-span-2">Remark</div>
+                {/* <div className="col-span-1 text-center">Remove</div>
     <div className="col-span-1 text-right">Total</div> */}
-  </div>
+              </div>
 
-  {/* Items */}
-  {items.map((it, idx) => (
-    <div
-      key={idx}
-      className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg shadow-sm"
-    >
-      {/* Category */}
-      <select
-        className="input col-span-2"
-        value={it.category || ""}
-        onChange={(e) => {
-          const selectedCat = categories.find(
-            (c) => c.category === e.target.value
-          );
-          if (selectedCat) {
-            updateItem(idx, {
-              category: selectedCat.category,
-              description: selectedCat.description,
-              price: selectedCat.price,
-              hsn: selectedCat.hsn,
-            });
-          } else {
-            updateItem(idx, { category: e.target.value });
-          }
-        }}
-      >
-        <option value="">Pick category</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.category}>
-            {c.category}
-          </option>
-        ))}
-      </select>
+              {/* Items */}
+              {items.map((it, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg shadow-sm"
+                >
+                  {/* Category */}
+                  <select
+                    className="input col-span-2"
+                    value={it.category || ""}
+                    onChange={(e) => {
+                      const selectedCat = categories.find(
+                        (c) => c.category === e.target.value
+                      );
+                      if (selectedCat) {
+                        updateItem(idx, {
+                          category: selectedCat.category,
+                          description: selectedCat.description,
+                          price: selectedCat.price,
+                          hsn: selectedCat.hsn,
+                        });
+                      } else {
+                        updateItem(idx, { category: e.target.value });
+                      }
+                    }}
+                  >
+                    <option value="">Pick category</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.category}>
+                        {c.category}
+                      </option>
+                    ))}
+                  </select>
 
-      {/* Description */}
-      <input
-        className="input col-span-3"
-        placeholder="Item description..."
-        value={it.description}
-        onChange={(e) => updateItem(idx, { description: e.target.value })}
-      />
+                  {/* Description */}
+                  <input
+                    className="input col-span-3"
+                    placeholder="Item description..."
+                    value={it.description}
+                    onChange={(e) =>
+                      updateItem(idx, { description: e.target.value })
+                    }
+                  />
 
-      {/* Price */}
-      <input
-        className="input col-span-1 text-right"
-        type="number"
-        step="0.01"
-        value={it.price}
-        onChange={(e) => updateItem(idx, { price: Number(e.target.value || 0) })}
-      />
+                  {/* Price */}
+                  <input
+                    className="input col-span-1 text-right"
+                    type="number"
+                    step="0.01"
+                    value={it.price}
+                    onChange={(e) =>
+                      updateItem(idx, { price: Number(e.target.value || 0) })
+                    }
+                  />
 
-      {/* HSN */}
-      <input
-        className="input col-span-1"
-        placeholder="HSN"
-        value={it.hsn ?? ""}
-        onChange={(e) => updateItem(idx, { hsn: e.target.value })}
-      />
+                  {/* HSN */}
+                  <input
+                    className="input col-span-1"
+                    placeholder="HSN"
+                    value={it.hsn ?? ""}
+                    onChange={(e) => updateItem(idx, { hsn: e.target.value })}
+                  />
 
-      {/* Qty */}
-      <input
-        className="input col-span-1 text-center"
-        type="number"
-        min={1}
-        value={it.quantity}
-        onChange={(e) => updateItem(idx, { quantity: Number(e.target.value || 1) })}
-      />
+                  {/* Qty */}
+                  <input
+                    className="input col-span-1 text-center"
+                    type="number"
+                    min={1}
+                    value={it.quantity}
+                    onChange={(e) =>
+                      updateItem(idx, { quantity: Number(e.target.value || 1) })
+                    }
+                  />
 
-      {/* Discount */}
-      <input
-        className="input col-span-1 text-right"
-        type="number"
-        step="0.01"
-        value={it.discount ?? ""}
-        placeholder="0"
-        onChange={(e) =>
-          updateItem(idx, {
-            discount: e.target.value === "" ? undefined : Number(e.target.value),
-          })
-        }
-      />
+                  {/* Discount */}
+                  <input
+                    className="input col-span-1 text-right"
+                    type="number"
+                    step="0.01"
+                    value={it.discount ?? ""}
+                    placeholder="0"
+                    onChange={(e) =>
+                      updateItem(idx, {
+                        discount:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
+                      })
+                    }
+                  />
 
-      {/* Tax */}
-      <input
-        className="input col-span-1 text-right"
-        type="number"
-        step="0.01"
-        value={it.gstPercent ?? ""}
-        placeholder={defaultTax !== undefined ? String(defaultTax) : "0"}
-        onChange={(e) =>
-          updateItem(idx, {
-            gstPercent: e.target.value === "" ? undefined : Number(e.target.value),
-          })
-        }
-      />
+                  {/* Tax */}
+                  <input
+                    className="input col-span-1 text-right"
+                    type="number"
+                    step="0.01"
+                    value={it.gstPercent ?? ""}
+                    placeholder={
+                      defaultTax !== undefined ? String(defaultTax) : "0"
+                    }
+                    onChange={(e) =>
+                      updateItem(idx, {
+                        gstPercent:
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value),
+                      })
+                    }
+                  />
 
-      {/* Remark */}
-      <input
-        className="input col-span-2"
-        placeholder="Item remark"
-        value={it.remark ?? ""}
-        onChange={(e) => updateItem(idx, { remark: e.target.value })}
-      />
+                  {/* Remark */}
+                  <input
+                    className="input col-span-2"
+                    placeholder="Item remark"
+                    value={it.remark ?? ""}
+                    onChange={(e) =>
+                      updateItem(idx, { remark: e.target.value })
+                    }
+                  />
 
-      {/* Remove */}
-      <div className="col-span-1 text-center">
-        <button
-          type="button"
-          className="text-xs px-2 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-50"
-          onClick={() => removeItem(idx)}
-        >
-          Remove
-        </button>
-      </div>
+                  {/* Remove */}
+                  <div className="col-span-1 text-center">
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-50"
+                      onClick={() => removeItem(idx)}
+                    >
+                      Remove
+                    </button>
+                  </div>
 
-      {/* Total */}
-      <div className="col-span-1 text-right font-semibold">
-        {currency} {lineTotal(it).toFixed(2)}
-      </div>
-    </div>
-  ))}
+                  {/* Total */}
+                  <div className="col-span-1 text-right font-semibold">
+                    {currency} {lineTotal(it).toFixed(2)}
+                  </div>
+                </div>
+              ))}
 
-  {/* Totals & Add Item */}
-  <div className="mt-3 flex flex-col items-end gap-2">
-    <div className="text-right font-semibold">
-      Total: {currency} {totals.total.toFixed(2)}
-    </div>
-    <button
-      type="button"
-      onClick={addItem}
-      className="w-full py-2 rounded-md border-dashed border-2 border-red-200 text-red-600"
-    >
-      + Add New Item
-    </button>
-  </div>
-</div>
-
+              {/* Totals & Add Item */}
+              <div className="mt-3 flex flex-col items-end gap-2">
+                <div className="text-right font-semibold">
+                  Total: {currency} {totals.total.toFixed(2)}
+                </div>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="w-full py-2 rounded-md border-dashed border-2 border-red-200 text-red-600"
+                >
+                  + Add New Item
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-6">
@@ -722,14 +741,6 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
                     <option>Card</option>
                   </select>
                 </div>
-                {/* 
-                <div className="mt-3">
-                  <div className="kv">Balance</div>
-                  <div className="text-xl font-bold">
-                    {currency}{" "}
-                    {(totals.total - (Number(advancePayment) || 0)).toFixed(2)}
-                  </div>
-                </div> */}
                 <div className="mt-3">
                   <div className="kv">Balance</div>
                   <div className="text-xl font-bold">
@@ -759,15 +770,13 @@ const [closingBalance, setClosingBalance] = useState<number>(0);
             </div>
           </div>
         </div>
-
-        <div className="card">
-          <h4 className="font-semibold mb-2">Notes & Terms</h4>
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-1">Note</label>
           <textarea
-            className="input"
-            rows={3}
-            value={globalRemark}
-            onChange={(e) => setGlobalRemark(e.target.value)}
-            placeholder="Any notes or terms for this quotation..."
+            className="w-full border border-neutral-300 dark:border-neutral-600 rounded-md p-2 text-sm"
+            value={invoiceNote}
+            onChange={(e) => setInvoiceNote(e.target.value)}
+            placeholder={settings?.defaultNote || "Add a note..."} // <-- use settings
           />
         </div>
       </form>
