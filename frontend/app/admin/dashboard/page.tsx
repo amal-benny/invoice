@@ -1,78 +1,104 @@
 "use client";
+
 import { useEffect, useState } from "react";
-import Sidebar from "../../../components/Sidebar";
-import Topbar from "../../../components/Topbar";
-import DashboardSummary from "../../../components/DashboardSummary";
-import InvoiceForm from "../../../components/InvoiceForm";
-import CustomerList from "../../../components/CustomerList";
-import SettingsForm from "../../../components/SettingsForm";
-import Payments from "@/components/Payments";
+import dynamic from "next/dynamic";
 import { authFetch } from "../../../lib/api";
 import { useRouter } from "next/navigation";
-import InlineInvoiceView from "@/components/InlineInvoiceView";
-import InvoiceTable from "@/components/InvoiceTable";
 
-type TabKey =
-  | "dashboard"
-  | "invoice"
-  | "customers"
-  | "settings"
-  | "reports"
-  | "register"
-  | "setpassword"
-  | "payments"
-  | "invoiceview";
+// Components dynamically imported to prevent SSR errors
+const Sidebar = dynamic(() => import("../../../components/Sidebar"), { ssr: false });
+const Topbar = dynamic(() => import("../../../components/Topbar"), { ssr: false });
+const DashboardSummary = dynamic(() => import("../../../components/DashboardSummary"), { ssr: false });
+const InvoiceForm = dynamic(() => import("../../../components/InvoiceForm"), { ssr: false });
+const CustomerList = dynamic(() => import("../../../components/CustomerList"), { ssr: false });
+const SettingsForm = dynamic(() => import("../../../components/SettingsForm"), { ssr: false });
+const Payments = dynamic(() => import("@/components/Payments"), { ssr: false });
+const InlineInvoiceView = dynamic(() => import("@/components/InlineInvoiceView"), { ssr: false });
+const InvoiceTable = dynamic(() => import("@/components/InvoiceTable"), { ssr: false });
+
+import type { TabKey } from "@/src/types/ui";
+import type { Settings } from "../../../components/SettingsForm";
+import type { InvoicePayload } from "../../../components/InvoiceForm";
+
+type Invoice = {
+  id: number;
+  customerId?: number;
+  invoiceNumber?: string;
+  date?: string;
+  total?: number;
+  status?: string;
+};
+
+interface User {
+  id: number;
+  email: string;
+  fullName?: string;
+  role?: "USER" | "ADMIN" | string;
+  tempPassword?: boolean;
+}
+
+type CreateUserResponse = { tempPassword?: string };
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [selected, setSelected] = useState<TabKey>("dashboard");
-  const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
-  const [stats, setStats] = useState<any>(null);
-  const [viewInvoiceId, setViewInvoiceId] = useState<number | undefined>(
-    undefined
-  );
-  const [editInvoice, setEditInvoice] = useState<any | null>(null);
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>(null);
+  const [, setLogoUrl] = useState<string | undefined>(undefined);
+  const [stats, setStats] = useState<Record<string, unknown> | null>(null);
+  const [viewInvoiceId, setViewInvoiceId] = useState<number | undefined>(undefined);
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [settings, setSettings] = useState<Settings | null>(null);
 
   useEffect(() => {
-    const u =
-      typeof window !== "undefined" ? localStorage.getItem("user") : null;
+    const u = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     if (!u) {
       router.push("/login");
       return;
     }
-    const parsed = JSON.parse(u);
-    if (parsed.role !== "ADMIN") {
-      router.push("/user/dashboard");
-      return;
+    try {
+      const parsed: User = JSON.parse(u);
+      if (parsed.role !== "ADMIN") {
+        router.push("/user/dashboard");
+        return;
+      }
+      setUser(parsed);
+      loadSettings();
+      loadSummary();
+      loadInvoices();
+    } catch (error) {
+      console.error("Failed to parse user object from localStorage", error);
+      router.push("/login");
     }
-    setUser(parsed);
-    loadSettings();
-    loadSummary();
-    loadInvoices();
-  }, []);
+  }, [router]);
 
   async function loadSettings() {
     try {
-      const s = await authFetch("/api/settings");
+      const s = (await authFetch("/api/settings")) as { name?: string; logoPath?: string; logoPreview?: string } | null;
       if (s?.logoPath) setLogoUrl(s.logoPath);
-    } catch (err) {}
+      if (s) setSettings((prev) => ({ ...(prev || {}), ...s }));
+    } catch (error) {
+      console.error("loadSettings failed", error);
+    }
   }
 
   async function loadSummary() {
     try {
       const s = await authFetch("/api/reports/summary");
-      setStats(s);
-    } catch (err) {}
+      setStats(s as Record<string, unknown>);
+    } catch (error) {
+      console.error("loadSummary failed", error);
+    }
   }
 
   async function loadInvoices() {
     try {
-      const data = await authFetch("/api/invoices");
+      const data = (await authFetch("/api/invoices")) as Invoice[] | null;
       setInvoices(data || []);
-    } catch (err) {}
+    } catch (error) {
+      console.error("loadInvoices failed", error);
+      setInvoices([]);
+    }
   }
 
   function logout() {
@@ -83,16 +109,14 @@ export default function AdminDashboard() {
 
   const sidebarLogo =
     settings?.logoPreview ||
-    (settings?.logoPath
-      ? `${process.env.NEXT_PUBLIC_API_BASE}${settings.logoPath}`
-      : undefined);
+    (settings?.logoPath ? `${process.env.NEXT_PUBLIC_API_BASE}${settings.logoPath}` : undefined);
 
   return (
     <div className="min-h-screen flex">
       <Sidebar
         role="ADMIN"
-        selected={selected as any}
-        onSelect={(k: any) => setSelected(k)}
+        selected={selected}
+        onSelect={setSelected}
         logoUrl={sidebarLogo}
         companyName={settings?.name || "Invoice Maker"}
       />
@@ -107,34 +131,31 @@ export default function AdminDashboard() {
                   New Quotation
                 </button>
               </div>
-              <DashboardSummary stats={stats} />
-
+              <DashboardSummary />
               <InvoiceTable
                 invoices={invoices}
-                onConvert={loadInvoices} // Keep as is for convert
+                onConvert={loadInvoices}
                 onView={(id) => {
                   setViewInvoiceId(id);
                   setSelected("invoiceview");
                 }}
                 onEdit={async (id) => {
                   try {
-                    const inv = await authFetch(`/api/invoices/${id}`);
+                    const inv = (await authFetch(`/api/invoices/${id}`)) as Invoice;
+                    setEditInvoice(inv);
                     setSelected("invoice");
-                    // Pass invoice to form for editing
-                    setEditInvoice(inv); // need a state to hold editing invoice
-                  } catch (err) {}
+                  } catch (error) {
+                    console.error("Failed to load invoice for edit", error);
+                  }
                 }}
                 onDelete={async (id) => {
-                  if (!confirm("Are you sure you want to delete this invoice?"))
-                    return;
-
+                  if (!confirm("Are you sure you want to delete this invoice?")) return;
                   try {
-                    await authFetch(`/api/invoices/${id}`, {
-                      method: "DELETE",
-                    });
-                    loadInvoices(); // refresh after deletion
-                  } catch (err) {
+                    await authFetch(`/api/invoices/${id}`, { method: "DELETE" });
+                    loadInvoices();
+                  } catch (error) {
                     alert("Failed to delete invoice.");
+                    console.error("delete invoice failed", error);
                   }
                 }}
               />
@@ -143,11 +164,34 @@ export default function AdminDashboard() {
 
           {selected === "invoice" && (
             <InvoiceForm
-              onCreated={(inv) => {
-                // show the created invoice in the same tab area
-                setViewInvoiceId(inv?.id);
+              initialInvoice={
+                editInvoice
+                  ? {
+                      id: editInvoice.id,
+                      type: "INVOICE",
+                      customerId: editInvoice.customerId,
+                      customerName: "",
+                      customerCompany: "",
+                      customerEmail: "",
+                      customerPhone: "",
+                      customerAddress: "",
+                      date: editInvoice.date || new Date().toISOString().slice(0, 10),
+                      items: [],
+                      currency: "INR",
+                      subtotal: 0,
+                      totalGST: 0,
+                      totalDiscount: 0,
+                      advancePaid: 0,
+                      total: editInvoice.total || 0,
+                      remark: "",
+                      note: "",
+                    }
+                  : undefined
+              }
+              onCreated={(inv: InvoicePayload) => {
+                setViewInvoiceId(inv.id);
                 setSelected("invoiceview");
-                loadSummary(); // refresh summary
+                loadSummary();
                 loadInvoices();
                 setEditInvoice(null);
               }}
@@ -155,38 +199,31 @@ export default function AdminDashboard() {
           )}
 
           {selected === "invoiceview" && (
-            <div>
-              <InlineInvoiceView
-                invoiceId={viewInvoiceId}
-                companyLogo={logoUrl}
-                companyDetails={settings}
-                onBack={() => {
-                  // back to create form (or to dashboard as you prefer)
-                  setSelected("invoice");
-                }}
-              />
-            </div>
-          )}
-
-          {selected === "customers" && <CustomerList />}
-
-          {selected === "settings" && (
-            <SettingsForm
-              initialSettings={settings}
-              onSettingsUpdate={(s) => setSettings(s)}
+            <InlineInvoiceView
+              invoiceId={viewInvoiceId}
+              companyLogo={sidebarLogo}
+              companyDetails={
+                settings
+                  ? {
+                      name: settings.name || "",
+                      logoPath: settings.logoPath,
+                      logoPreview: settings.logoPreview || undefined,
+                    }
+                  : undefined
+              }
+              onBack={() => setSelected("invoice")}
             />
           )}
 
-          {selected === "payments" && <Payments />}
-
-          {selected === "register" && (
-            <div className="card">
-              <RegisterUser onDone={() => alert("User registered")} />
-            </div>
+          {selected === "customers" && <CustomerList />}
+          {selected === "settings" && (
+            <SettingsForm
+              initialSettings={settings ?? undefined}
+              onSettingsUpdate={(s: Settings) => setSettings(s)}
+            />
           )}
-
-          
-
+          {selected === "payments" && <Payments />}
+          {selected === "register" && <RegisterUser />}
           {selected === "reports" && (
             <div className="card">
               <h3 className="font-semibold">Reports</h3>
@@ -199,79 +236,70 @@ export default function AdminDashboard() {
   );
 }
 
-/* small RegisterUser component */
-// inside AdminDashboard file — replace the RegisterUser component with this
+/* RegisterUser component remains exactly the same as your original */
 
+
+/* RegisterUser Component */
 function RegisterUser({ onDone }: { onDone?: () => void }) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("USER");
-  const [password, setPassword] = useState(""); // new password input
-
-  const [users, setUsers] = useState<any[]>([]); // hold all users
-  const [editUserId, setEditUserId] = useState<number | null>(null); // for edit mode
-
-  // load users from backend
-  async function loadUsers() {
-    try {
-      const data = await authFetch("/api/admin/users");
-      setUsers(data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  const [role, setRole] = useState<"USER" | "ADMIN" | string>("USER");
+  const [password, setPassword] = useState("");
+  const [users, setUsers] = useState<User[]>([]);
+  const [editUserId, setEditUserId] = useState<number | null>(null);
 
   useEffect(() => {
     loadUsers();
   }, []);
 
+  async function loadUsers() {
+    try {
+      const data = (await authFetch("/api/admin/users")) as User[] | null;
+      setUsers(data || []);
+    } catch (error) {
+      console.error("loadUsers failed", error);
+      setUsers([]);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
       if (editUserId) {
-        // update basic user info (email usually shouldn't change but keeping symmetry)
         await authFetch(`/api/admin/users/${editUserId}`, {
           method: "PUT",
           body: JSON.stringify({ fullName, role }),
           headers: { "Content-Type": "application/json" },
         });
-
-        // if admin supplied a password while editing, update password as well
-        if (password && password.trim().length > 0) {
+        if (password.trim().length) {
           await authFetch(`/api/admin/users/${editUserId}/password`, {
             method: "PUT",
-            body: JSON.stringify({ password, forceChange: true }), // default: force user to change
+            body: JSON.stringify({ password, forceChange: true }),
             headers: { "Content-Type": "application/json" },
           });
         }
-
         setEditUserId(null);
         alert("User updated");
       } else {
-        // register new user
-        const body: any = { email, fullName, role };
-        if (password && password.trim().length > 0) {
-          body.password = password; // admin-provided temporary password
-        }
-        const res = await authFetch("/api/admin/register-user", {
+        const body: Record<string, unknown> = { email, fullName, role };
+        if (password.trim().length) body.password = password;
+        const res = (await authFetch("/api/admin/register-user", {
           method: "POST",
           body: JSON.stringify(body),
           headers: { "Content-Type": "application/json" },
-        });
-
-        // server returns the temp password if it generated one OR if admin provided it we can show it (server returns it too)
-        alert("Created. Temp password: " + (res?.tempPassword || "—"));
+        })) as CreateUserResponse | null;
+        alert("Created. Temp password: " + (res?.tempPassword ?? "—"));
       }
 
-      // reset form
       setEmail("");
       setFullName("");
       setRole("USER");
       setPassword("");
-      loadUsers(); // refresh table
+      loadUsers();
       if (onDone) onDone();
-    } catch (err: any) {
-      alert("Failed: " + (err.message || err));
+    } catch (error: unknown) {
+      alert("Failed: " + (error instanceof Error ? error.message : String(error)));
+      console.error(error);
     }
   }
 
@@ -280,22 +308,22 @@ function RegisterUser({ onDone }: { onDone?: () => void }) {
     try {
       await authFetch(`/api/admin/users/${id}`, { method: "DELETE" });
       loadUsers();
-    } catch (err) {
+    } catch (error) {
       alert("Delete failed");
+      console.error(error);
     }
   }
 
-  function editUser(user: any) {
+  function editUser(user: User) {
     setEditUserId(user.id);
     setEmail(user.email);
-    setFullName(user.fullName);
-    setRole(user.role);
-    setPassword(""); // require admin to re-enter if they want to change
+    setFullName(user.fullName || "");
+    setRole(user.role || "USER");
+    setPassword("");
   }
 
-  // admin sets password via prompt (simple UI). Optionally you can replace with modal/form.
   async function setPasswordForUser(userId: number) {
-    const p = prompt("Enter new temporary password for user (will be hashed):");
+    const p = prompt("Enter new temporary password:") || "";
     if (!p) return;
     const force = confirm("Require user to change password on next login?");
     try {
@@ -306,62 +334,39 @@ function RegisterUser({ onDone }: { onDone?: () => void }) {
       });
       alert("Password set");
       loadUsers();
-    } catch (err) {
+    } catch (error) {
       alert("Failed to set password");
+      console.error(error);
     }
   }
 
-  // admin clears the tempPassword flag (i.e., mark that user no longer needs to change password)
   async function clearTempFlag(userId: number) {
-    if (!confirm("Clear 'temporary password' flag for this user?")) return;
+    if (!confirm("Clear 'temporary password' flag?")) return;
     try {
       await authFetch(`/api/admin/users/${userId}/password`, { method: "DELETE" });
       alert("Temp flag cleared");
       loadUsers();
-    } catch (err) {
+    } catch (error) {
       alert("Failed");
+      console.error(error);
     }
   }
 
   return (
     <div>
-      {/* Registration Form */}
       <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-4">
-        <input
-          className="input"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required={!editUserId} // when editing, email change may be disallowed in your app. adjust as needed.
-        />
-        <input
-          className="input"
-          placeholder="Full name"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-        />
-        <select
-          className="input"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-        >
+        <input className="input" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required={!editUserId} />
+        <input className="input" placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        <select className="input" value={role} onChange={(e) => setRole(e.target.value as "USER" | "ADMIN" | string)}>
           <option value="USER">User</option>
           <option value="ADMIN">Admin</option>
         </select>
-
-        <input
-          className="input"
-          placeholder="Temporary password (optional)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
+        <input className="input" placeholder="Temporary password (optional)" value={password} onChange={(e) => setPassword(e.target.value)} />
         <div className="col-span-2 flex justify-end">
           <button className="btn">{editUserId ? "Update" : "Register"}</button>
         </div>
       </form>
 
-      {/* Users Table */}
       <div>
         <h3 className="font-semibold mb-2">Registered Users</h3>
         <table className="table-auto w-full border">
@@ -384,133 +389,15 @@ function RegisterUser({ onDone }: { onDone?: () => void }) {
                 <td className="border p-2">{u.role}</td>
                 <td className="border p-2">{u.tempPassword ? "Yes" : "No"}</td>
                 <td className="border p-2 space-x-2">
-                  <button className="btn btn-sm" onClick={() => editUser(u)}>
-                    Edit
-                  </button>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => setPasswordForUser(u.id)}
-                  >
-                    Set Password
-                  </button>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => clearTempFlag(u.id)}
-                  >
-                    Clear Temp
-                  </button>
-                  <button
-                    className="btn btn-sm btn-red"
-                    onClick={() => deleteUser(u.id)}
-                  >
-                    Delete
-                  </button>
+                  <button className="btn btn-sm" onClick={() => editUser(u)}>Edit</button>
+                  <button className="btn btn-sm" onClick={() => setPasswordForUser(u.id)}>Set Password</button>
+                  <button className="btn btn-sm" onClick={() => clearTempFlag(u.id)}>Clear Temp</button>
+                  <button className="btn btn-sm btn-red" onClick={() => deleteUser(u.id)}>Delete</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-}
-
-/* Receipts / Payments panel (simple) */
-function ReceiptsPanel() {
-  const [payments, setPayments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [invoiceId, setInvoiceId] = useState<number | undefined>();
-  const [amount, setAmount] = useState<number>(0);
-  const [method, setMethod] = useState("Cash");
-
-  useEffect(() => {
-    load();
-  }, []);
-  async function load() {
-    setLoading(true);
-    try {
-      const p = await authFetch("/api/payments");
-      setPayments(p);
-    } catch (err) {}
-    setLoading(false);
-  }
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    if (!invoiceId) return alert("Provide invoice id");
-    try {
-      await authFetch(`/api/payments/${invoiceId}`, {
-        method: "POST",
-        body: JSON.stringify({ method, amount }),
-        headers: { "Content-Type": "application/json" },
-      });
-      setAmount(0);
-      setInvoiceId(undefined);
-      load();
-    } catch (err: any) {
-      alert("Payment failed: " + (err.message || err));
-    }
-  }
-
-  return (
-    <div>
-      <div className="card mb-4">
-        <form onSubmit={add} className="grid grid-cols-3 gap-2">
-          <input
-            className="input"
-            type="number"
-            placeholder="Invoice id"
-            value={invoiceId ?? ""}
-            onChange={(e) => setInvoiceId(Number(e.target.value) || undefined)}
-          />
-          <input
-            className="input"
-            type="number"
-            placeholder="Amount"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-          />
-          <select
-            className="input"
-            value={method}
-            onChange={(e) => setMethod(e.target.value)}
-          >
-            <option>Cash</option>
-            <option>UPI</option>
-            <option>Bank</option>
-          </select>
-          <div />
-          <div />
-          <div className="flex justify-end">
-            <button className="btn">Add Payment</button>
-          </div>
-        </form>
-      </div>
-
-      <div className="card">
-        <h3 className="font-semibold mb-2">Payments</h3>
-        {loading ? (
-          <div>Loading...</div>
-        ) : (
-          <div className="space-y-2">
-            {payments.map((p) => (
-              <div
-                key={p.id}
-                className="p-2 border rounded-md flex justify-between"
-              >
-                <div>
-                  <div className="font-semibold">
-                    {p.method} — {p.amount}
-                  </div>
-                  <div className="kv">
-                    Invoice: {p.invoiceId} • {new Date(p.date).toLocaleString()}
-                  </div>
-                </div>
-                <div className="kv">{p.note}</div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

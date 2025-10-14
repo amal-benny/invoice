@@ -34,19 +34,33 @@ export default function PaymentLedgers() {
     }
   })();
 
-  const initialDeletedIds = (() => {
-    try {
-      const raw = localStorage.getItem(computedUserKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed))
-        return parsed
-          .map((x: any) => Number(x))
-          .filter((n) => !Number.isNaN(n));
-      return [];
-    } catch {
-      return [];
-    }
-  })();
+//   const initialDeletedIds = (() => {
+//     try {
+//       const raw = localStorage.getItem(computedUserKey);
+//       const parsed = raw ? JSON.parse(raw) : [];
+//       if (Array.isArray(parsed))
+//         return parsed
+//           .map((x: any) => Number(x))
+//           .filter((n) => !Number.isNaN(n));
+//       return [];
+//     } catch {
+//       return [];
+//     }
+//   })();
+
+const initialDeletedIds = (() => {
+  try {
+    const raw = localStorage.getItem(computedUserKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed))
+      return parsed
+        .map((x: unknown) => typeof x === "number" ? x : Number(x))
+        .filter((n) => !Number.isNaN(n));
+    return [];
+  } catch {
+    return [];
+  }
+})();
 
   const [deletedIds, setDeletedIds] = useState<number[]>(initialDeletedIds);
   const [lastDeleted, setLastDeleted] = useState<{
@@ -63,26 +77,49 @@ export default function PaymentLedgers() {
     }
   }
 
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    (async () => {
-      try {
-        const data = await authFetch("/api/payment-ledgers");
-        const rawItems: Ledger[] = Array.isArray(data) ? data : [];
-        if (!mounted) return;
-        setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
-      } catch (err) {
-        console.error("Failed to load payment ledgers", err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
-    };
-  }, []);
+//   useEffect(() => {
+//     let mounted = true;
+//     setLoading(true);
+//     (async () => {
+//       try {
+//         const data = await authFetch("/api/payment-ledgers");
+//         const rawItems: Ledger[] = Array.isArray(data) ? data : [];
+//         if (!mounted) return;
+//         setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
+//       } catch (err) {
+//         console.error("Failed to load payment ledgers", err);
+//       } finally {
+//         if (mounted) setLoading(false);
+//       }
+//     })();
+//     return () => {
+//       mounted = false;
+//       if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+//     };
+//   }, []);
+
+// ...existing code...
+useEffect(() => {
+  let mounted = true;
+  setLoading(true);
+  (async () => {
+    try {
+      const data = await authFetch("/api/payment-ledgers");
+      const rawItems: Ledger[] = Array.isArray(data) ? data : [];
+      if (!mounted) return;
+      setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
+    } catch (err) {
+      console.error("Failed to load payment ledgers", err);
+    } finally {
+      if (mounted) setLoading(false);
+    }
+  })();
+  return () => {
+    mounted = false;
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+  };
+}, [deletedIds]);
+// ...existing code...
 
   function filtered() {
     const q = search.trim().toLowerCase();

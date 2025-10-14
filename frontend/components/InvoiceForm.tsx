@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { authFetch } from "../lib/api";
-import { useRouter } from "next/navigation";
 
 type Item = {
   description: string;
@@ -14,11 +13,77 @@ type Item = {
   remark?: string | null;
   hsn?: string | null;
 };
-type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card";
+
+type GlobalPaymentMethod = "UPI" | "CASH" | "BANK" | "CARD";
+
+type Settings = {
+  name?: string;
+  contact?: string;
+  address?: string;
+  gstNumber?: string;
+  panNumber?: string;
+  stateName?: string;
+  stateCode?: string;
+  currency?: string;
+  taxPercent?: number;
+  taxType?: string;
+  defaultNote?: string;
+};
+
+type Customer = {
+  id: number;
+  name: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  stateName?: string;
+  stateCode?: string;
+};
+
+type Category = {
+  id: number;
+  category: string;
+  description?: string;
+  price?: number;
+  hsn?: string;
+};
+
+export type InvoicePayload = {
+  id?: number;
+  type: "INVOICE" | "QUOTE";
+  customerId?: number;
+  customerName: string;
+  customerCompany: string;
+  customerEmail: string;
+  customerPhone: string;
+  customerAddress: string;
+  dueDate?: string;
+  date: string;
+  items: Item[];
+  remark?: string;
+  note?: string;
+  currency: string;
+  subtotal: number;
+  totalGST: number;
+  totalDiscount: number;
+  advancePaid: number;
+  total: number;
+};
+
+declare global {
+  interface Window {
+    updateDashboardIncome?: (
+      amount: number,
+      method: GlobalPaymentMethod
+    ) => void;
+  }
+}
 
 function toCents(n: number) {
   return Math.round((isNaN(n) ? 0 : n) * 100);
 }
+
 function fromCents(cents: number) {
   return cents / 100;
 }
@@ -27,23 +92,18 @@ export default function InvoiceForm({
   onCreated,
   initialInvoice,
 }: {
-  onCreated?: (inv: any) => void;
-  initialInvoice?: any;
+  onCreated?: (inv: InvoicePayload) => void;
+  initialInvoice?: InvoicePayload;
 }) {
-  const router = useRouter();
-
-  // metadata
-  const [settings, setSettings] = useState<any>(null);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [invoiceNote, setInvoiceNote] = useState<string>(""); // Quotation categories
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [invoiceNote, setInvoiceNote] = useState<string>("");
 
   const [defaultTax, setDefaultTax] = useState<number | undefined>(undefined);
   const [defaultTaxType, setDefaultTaxType] = useState<string>("GST");
 
-  const [type, setType] = useState<"INVOICE" | "QUOTE">(
-    initialInvoice?.type || "QUOTE"
-  );
+  const [type] = useState<"INVOICE" | "QUOTE">(initialInvoice?.type || "QUOTE");
   const [customerId, setCustomerId] = useState<number | undefined>(
     initialInvoice?.customerId
   );
@@ -52,7 +112,7 @@ export default function InvoiceForm({
     initialInvoice?.date || new Date().toISOString().slice(0, 10)
   );
   const [items, setItems] = useState<Item[]>(
-    initialInvoice?.items?.map((it: any) => ({
+    initialInvoice?.items?.map((it: Item) => ({
       description: it.description,
       quantity: it.quantity,
       price: it.price,
@@ -76,52 +136,47 @@ export default function InvoiceForm({
       },
     ]
   );
+
   const [currency, setCurrency] = useState<string>(
     initialInvoice?.currency || "INR"
   );
-  const [globalRemark, setGlobalRemark] = useState<string>(
-    initialInvoice?.remark || ""
-  );
-
+  const [globalRemark] = useState<string>(initialInvoice?.remark || "");
   const [advancePayment, setAdvancePayment] = useState<number>(
     initialInvoice?.advancePaid || 0
   );
-  const [advanceMethod, setAdvanceMethod] = useState<string>("Cash");
-
+  const [advanceMethod, setAdvanceMethod] =
+    useState<GlobalPaymentMethod>("CASH");
   const [loading, setLoading] = useState(false);
 
-  const [customerName, setCustomerName] = useState(
-    initialInvoice?.customer?.name || ""
+  const [customerName, setCustomerName] = useState<string>(
+    initialInvoice?.customerName || ""
   );
-  const [customerCompany, setCustomerCompany] = useState(
-    initialInvoice?.customer?.company || ""
+  const [customerCompany, setCustomerCompany] = useState<string>(
+    initialInvoice?.customerCompany || ""
   );
-  const [customerEmail, setCustomerEmail] = useState(
-    initialInvoice?.customer?.email || ""
+  const [customerEmail, setCustomerEmail] = useState<string>(
+    initialInvoice?.customerEmail || ""
   );
-  const [customerPhone, setCustomerPhone] = useState(
-    initialInvoice?.customer?.phone || ""
+  const [customerPhone, setCustomerPhone] = useState<string>(
+    initialInvoice?.customerPhone || ""
   );
-  const [customerstateName, setCustomerStateName] = useState(
-    initialInvoice?.customer?.statename || ""
+  const [customerStateName, setCustomerStateName] = useState<string>(
+    initialInvoice?.customerAddress ? initialInvoice.customerAddress : ""
   );
-  const [customerstateCode, setCustomerStateCode] = useState(
-    initialInvoice?.customer?.statecode || ""
+  const [customerStateCode, setCustomerStateCode] = useState<string>(
+    initialInvoice?.customerAddress ? initialInvoice.customerAddress : ""
   );
-  const [customerAddress, setCustomerAddress] = useState(
-    initialInvoice?.customer?.address || ""
+  const [customerAddress, setCustomerAddress] = useState<string>(
+    initialInvoice?.customerAddress || ""
   );
-  const [cashBalance, setCashBalance] = useState<number>(0);
-  const [bankBalance, setBankBalance] = useState<number>(0);
-  const [totalIncome, setTotalIncome] = useState<number>(0);
-  const [closingBalance, setClosingBalance] = useState<number>(0);
 
-  // Load settings, customers, and quotation categories
+  // Load settings, customers, categories
   useEffect(() => {
     (async () => {
       try {
-        const s = await authFetch("/api/settings");
+        const s = (await authFetch("/api/settings")) as Settings;
         setSettings(s || null);
+
         if (s) {
           if (s.currency) setCurrency(s.currency);
           if (s.taxPercent !== undefined && s.taxPercent !== null) {
@@ -137,39 +192,49 @@ export default function InvoiceForm({
             );
           }
         }
-      } catch (err) {}
+      } catch (err: unknown) {
+        console.error("Failed to load settings", err);
+      }
 
       try {
-        const c = await authFetch("/api/customers");
+        const c = (await authFetch("/api/customers")) as Customer[];
         setCustomers(c || []);
-      } catch (e) {}
+      } catch (err: unknown) {
+        console.error("Failed to load customers", err);
+      }
 
       try {
-        const cats = await authFetch("/api/quotation-categories");
+        const cats = (await authFetch(
+          "/api/quotation-categories"
+        )) as Category[];
         setCategories(cats || []);
-      } catch (e) {}
+      } catch (err: unknown) {
+        console.error("Failed to load categories", err);
+      }
     })();
   }, []);
 
   useEffect(() => {
-  setInvoiceNote(initialInvoice?.note || settings?.defaultNote || "");
-}, [initialInvoice, settings]);
+    setInvoiceNote(initialInvoice?.note || settings?.defaultNote || "");
+  }, [initialInvoice, settings]);
 
   // Item helpers
-  function updateItem(idx: number, patch: Partial<Item>) {
+  const updateItem = (idx: number, patch: Partial<Item>) => {
     const copy = [...items];
     copy[idx] = { ...copy[idx], ...patch };
     setItems(copy);
-  }
-  function addItem() {
+  };
+
+  const addItem = () => {
     setItems((prev) => [
       ...prev,
       { description: "", quantity: 1, price: 0, gstPercent: defaultTax },
     ]);
-  }
-  function removeItem(idx: number) {
+  };
+
+  const removeItem = (idx: number) => {
     setItems(items.filter((_, i) => i !== idx));
-  }
+  };
 
   const totals = useMemo(() => {
     let subtotalCents = 0;
@@ -212,7 +277,7 @@ export default function InvoiceForm({
     };
   }, [items, advancePayment]);
 
-  function lineTotal(it: Item) {
+  const lineTotal = (it: Item) => {
     const qty = Number(it.quantity || 0);
     const price = Number(it.price || 0);
     const base = qty * price;
@@ -221,13 +286,13 @@ export default function InvoiceForm({
     const adv = it.advance ? Number(it.advance) : 0;
     const t = base + gst - disc - adv;
     return t < 0 ? 0 : t;
-  }
+  };
 
   async function submit(e?: React.FormEvent) {
     if (e) e.preventDefault();
     setLoading(true);
 
-    const payloadItems = items.map((it) => ({
+    const payloadItems: Item[] = items.map((it) => ({
       description: it.description,
       quantity: Number(it.quantity || 0),
       price: Number(it.price || 0),
@@ -248,7 +313,7 @@ export default function InvoiceForm({
       hsn: it.hsn || undefined,
     }));
 
-    const payload = {
+    const payload: InvoicePayload = {
       type,
       customerId: customerId || undefined,
       customerName,
@@ -257,6 +322,7 @@ export default function InvoiceForm({
       customerPhone,
       customerAddress,
       dueDate: dueDate || undefined,
+      date, // <-- add this line!
       items: payloadItems,
       remark: globalRemark || undefined,
       note: invoiceNote || settings?.defaultNote || undefined,
@@ -269,7 +335,7 @@ export default function InvoiceForm({
     };
 
     try {
-      let inv;
+      let inv: InvoicePayload;
       if (initialInvoice?.id) {
         inv = await authFetch(`/api/invoices/${initialInvoice.id}`, {
           method: "PUT",
@@ -286,15 +352,20 @@ export default function InvoiceForm({
 
       if (onCreated) onCreated(inv);
 
-      // 1. Update dashboard balances for advance
+      // Update dashboard if advance exists
       if (totals.advanceTotal > 0) {
-        const method = advanceMethod as MethodType;
-        if ((window as any).updateDashboardIncome) {
-          (window as any).updateDashboardIncome(method, totals.advanceTotal);
+        if (
+          typeof window !== "undefined" &&
+          typeof window.updateDashboardIncome === "function"
+        ) {
+          // amount (number) goes first, then method (GlobalPaymentMethod)
+          window.updateDashboardIncome(totals.advanceTotal, advanceMethod);
         }
       }
-    } catch (err: any) {
-      alert("Failed to save: " + (err?.message || JSON.stringify(err)));
+    } catch (err: unknown) {
+      alert(
+        "Failed to save: " + (err instanceof Error ? err.message : String(err))
+      );
     } finally {
       setLoading(false);
     }
@@ -457,13 +528,13 @@ export default function InvoiceForm({
                   <input
                     className="input"
                     placeholder="State Name"
-                    value={customerstateName}
+                    value={customerStateName}
                     onChange={(e) => setCustomerStateName(e.target.value)}
                   />
                   <input
                     className="input"
                     placeholder="State Code"
-                    value={customerstateCode}
+                    value={customerStateCode}
                     onChange={(e) => setCustomerStateCode(e.target.value)}
                   />
                   <textarea
@@ -733,7 +804,9 @@ export default function InvoiceForm({
                   <select
                     className="input"
                     value={advanceMethod}
-                    onChange={(e) => setAdvanceMethod(e.target.value)}
+                    onChange={(e) =>
+                      setAdvanceMethod(e.target.value as GlobalPaymentMethod)
+                    }
                   >
                     <option>Cash</option>
                     <option>UPI</option>

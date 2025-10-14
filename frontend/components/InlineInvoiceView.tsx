@@ -3,6 +3,54 @@ import { useEffect, useState, useRef } from "react";
 import { authFetch } from "../lib/api";
 import html2pdf from "html2pdf.js";
 import InvoiceForm from "./InvoiceForm";
+import Image from "next/image";
+
+// ---------------- Types ----------------
+
+type InvoiceItem = {
+  description: string;
+  hsn?: string;
+  quantity: number;
+  price: number;
+};
+
+type Customer = {
+  name?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  panNumber?: string;
+  gstNumber?: string;
+};
+
+type Company = {
+  name?: string;
+  address?: string;
+  contact?: string;
+  defaultNote?: string;
+  [key: string]: string | undefined; // optional extra fields
+};
+
+type Invoice = {
+  id: number;
+  invoiceNumber?: string;
+  date?: string;
+  dueDate?: string;
+  type?: "QUOTE" | "INVOICE";
+  currency?: string;
+  subtotal?: number;
+  totalGST?: number;
+  totalDiscount?: number;
+  advancePaid?: number;
+  total?: number;
+  note?: string;
+  items?: InvoiceItem[];
+  customer?: Customer;
+  company?: Company;
+};
+
+// ---------------- Hook ----------------
 
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -21,18 +69,24 @@ function useTheme() {
   return { theme, setTheme };
 }
 
+// ---------------- Props ----------------
+
+interface InlineInvoiceViewProps {
+  invoiceId?: number | string;
+  companyLogo?: string;
+  companyDetails?: Company;
+  onBack?: () => void;
+}
+
+// ---------------- Component ----------------
+
 export default function InlineInvoiceView({
   invoiceId,
   companyLogo,
   companyDetails,
   onBack,
-}: {
-  invoiceId?: number | string | undefined;
-  companyLogo?: string;
-  companyDetails?: any;
-  onBack?: () => void;
-}) {
-  const [invoice, setInvoice] = useState<any | null>(null);
+}: InlineInvoiceViewProps) {
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
   const { theme, setTheme } = useTheme();
   const company = invoice?.company || companyDetails || {};
   const componentRef = useRef<HTMLDivElement>(null);
@@ -42,13 +96,37 @@ export default function InlineInvoiceView({
     if (!invoiceId) return;
     (async () => {
       try {
-        const data = await authFetch(`/api/invoices/${invoiceId}`);
+        const data: Invoice = await authFetch(`/api/invoices/${invoiceId}`);
         setInvoice(data);
       } catch {
         setInvoice(null);
       }
     })();
-  }, [invoiceId]);
+  }, [invoiceId])
+
+    const mapToInvoicePayload = (inv: Invoice): import("./InvoiceForm").InvoicePayload => ({
+    // ensure required fields are present and non-undefined
+    id: inv.id,
+    // invoiceNumber: inv.invoiceNumber ?? "",
+    // InvoicePayload requires `date: string`
+    date: inv.date ?? new Date().toISOString().slice(0, 10),
+    dueDate: inv.dueDate ?? undefined,
+    // InvoicePayload requires type to be "QUOTE" | "INVOICE"
+    type: (inv.type === "QUOTE" ? "QUOTE" : "INVOICE"),
+    currency: inv.currency ?? "INR",
+    subtotal: inv.subtotal ?? 0,
+    totalGST: inv.totalGST ?? 0,
+    totalDiscount: inv.totalDiscount ?? 0,
+    advancePaid: inv.advancePaid ?? 0,
+    total: inv.total ?? 0,
+    note: inv.note ?? "",
+    items: inv.items ?? [],
+    customerName: inv.customer?.name ?? "",
+    customerCompany: inv.customer?.company ?? "",
+    customerEmail: inv.customer?.email ?? "",
+    customerPhone: inv.customer?.phone ?? "",
+    customerAddress: inv.customer?.address ?? "",
+  });
 
   const handlePrint = (pageSize: "A4" | "A5" = "A4") => {
     if (!componentRef.current) return;
@@ -288,10 +366,37 @@ export default function InlineInvoiceView({
         >
           Cancel Edit
         </button>
+
         <InvoiceForm
-          initialInvoice={invoice}
+          // pass a fully-populated InvoicePayload (no undefined required fields)
+          initialInvoice={mapToInvoicePayload(invoice)}
           onCreated={(updatedInvoice) => {
-            setInvoice(updatedInvoice); // update view after save
+            // map InvoicePayload back to your local Invoice shape
+            const mapped: Invoice = {
+              id: updatedInvoice.id ?? invoice.id, // keep id if provided
+              // invoiceNumber: updatedInvoice.invoiceNumber || invoice.invoiceNumber,
+              date: updatedInvoice.date,
+              dueDate: updatedInvoice.dueDate,
+              type: updatedInvoice.type,
+              currency: updatedInvoice.currency,
+              subtotal: updatedInvoice.subtotal,
+              totalGST: updatedInvoice.totalGST,
+              totalDiscount: updatedInvoice.totalDiscount,
+              advancePaid: updatedInvoice.advancePaid,
+              total: updatedInvoice.total,
+              note: updatedInvoice.note,
+              items: updatedInvoice.items as InvoiceItem[],
+              customer: {
+                name: updatedInvoice.customerName ,
+                company: updatedInvoice.customerCompany ,
+                email: updatedInvoice.customerEmail ,
+                phone: updatedInvoice.customerPhone ,
+                address: updatedInvoice.customerAddress ,
+              },
+              // keep any existing company object (or companyDetails) if present
+              company: invoice.company ?? companyDetails ?? undefined,
+            };
+            setInvoice(mapped);
             setEditing(false);
           }}
         />
@@ -376,10 +481,13 @@ export default function InlineInvoiceView({
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-6">
             {companyLogo ? (
-              <img
+              <Image
                 src={companyLogo}
                 alt="Company logo"
+                width={96}
+                height={96}
                 className="h-24 w-auto object-contain"
+                priority
               />
             ) : (
               <div className="h-16 w-16 rounded-md bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center text-sm font-semibold">
@@ -457,7 +565,7 @@ export default function InlineInvoiceView({
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-neutral-800 divide-y divide-neutral-100 dark:divide-neutral-700">
-              {invoice.items?.map((it: any, i: number) => (
+              {invoice.items?.map((it: InvoiceItem, i: number) => (
                 <tr key={i} className="align-top">
                   <td className="p-4">{it.description}</td>
                   <td className="p-4 text-center">{it.hsn || "-"}</td>

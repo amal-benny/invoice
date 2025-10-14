@@ -3,8 +3,24 @@
 import { useState } from "react";
 import { authFetch } from "../lib/api";
 
-type Invoice = any;
-type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card";
+type Invoice = {
+  id: number;
+  invoiceNumber?: string;
+  currency?: string;
+  total?: number;
+  advancePaid?: number;
+  status?: string;
+  payments?: Payment[];
+};
+
+type Payment = {
+  id: number;
+  amount: number;
+  date?: string;
+  method?: string;
+  reference?: string;
+  note?: string;
+};
 
 export default function PaymentModal({
   invoice,
@@ -13,7 +29,7 @@ export default function PaymentModal({
 }: {
   invoice: Invoice;
   onClose: () => void;
-  onSuccess: (updatedInvoice: any) => void;
+  onSuccess: (updatedInvoice: Invoice) => void;
 }) {
   const existingAdvance = Number(invoice?.advancePaid || 0);
   const total = Number(invoice?.total || 0);
@@ -21,9 +37,7 @@ export default function PaymentModal({
 
   const [amount, setAmount] = useState<number>(remaining || 0);
   const [method, setMethod] = useState<string>("Cash");
-  const [date, setDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState<string>("");
   const [reference, setReference] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -46,14 +60,20 @@ export default function PaymentModal({
     setLoading(true);
 
     try {
-      const payload: any = {
+      const payload: {
+        invoiceId: number;
+        amount: number;
+        method: string;
+        date: string;
+        note: string;
+        reference?: string;
+      } = {
         invoiceId: invoice.id,
         amount,
         method,
         date,
         note,
       };
-      // include reference if provided
       if (reference) payload.reference = reference;
 
       const resp = await authFetch("/api/payments", {
@@ -62,24 +82,17 @@ export default function PaymentModal({
         body: JSON.stringify(payload),
       });
 
-      // Prefer backend-returned invoice (contains advancePaid & status)
-      const updatedInvoice = resp?.invoice ?? resp;
+      const updatedInvoice: Invoice = resp?.invoice ?? resp;
 
-      // Sanity: if backend didn't return status/advancePaid, compute fallback
+      // Ensure numbers and fallback status
       if (updatedInvoice) {
-        // ensure numbers
-        updatedInvoice.advancePaid = Number(
-          updatedInvoice.advancePaid ?? updatedInvoice.advancePaid ?? 0
-        );
+        updatedInvoice.advancePaid = Number(updatedInvoice.advancePaid ?? 0);
         updatedInvoice.total = Number(updatedInvoice.total ?? 0);
 
-        // If backend didn't set status, compute here (fallback)
         if (!updatedInvoice.status) {
           if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
-          else if ((updatedInvoice.advancePaid || 0) <= 0)
-            updatedInvoice.status = "PENDING";
-          else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total)
-            updatedInvoice.status = "PAID";
+          else if ((updatedInvoice.advancePaid || 0) <= 0) updatedInvoice.status = "PENDING";
+          else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total) updatedInvoice.status = "PAID";
           else updatedInvoice.status = "PARTIAL";
         }
       }
@@ -88,12 +101,23 @@ export default function PaymentModal({
       onClose();
 
       const amountPaid = amount;
-      const methodType = method as MethodType;
-      if ((window as any).updateDashboardIncome) {
-        (window as any).updateDashboardIncome(methodType, amountPaid);
+      const methodType =
+        method === "Cash"
+          ? "CASH"
+          : method === "Bank Transfer"
+          ? "BANK"
+          : method === "Card"
+          ? "CARD"
+          : method === "UPI"
+          ? "UPI"
+          : "CASH"; // fallback
+
+      if (window.updateDashboardIncome) {
+        window.updateDashboardIncome(amountPaid, methodType);
       }
-    } catch (err: any) {
-      setError(err?.message || "Payment failed");
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError("Payment failed");
     } finally {
       setLoading(false);
     }
@@ -117,12 +141,10 @@ export default function PaymentModal({
               <strong>Total:</strong> {invoice.currency} {total.toFixed(2)}
             </div>
             <div>
-              <strong>Already Paid (advance):</strong> {invoice.currency}{" "}
-              {existingAdvance.toFixed(2)}
+              <strong>Already Paid (advance):</strong> {invoice.currency} {existingAdvance.toFixed(2)}
             </div>
             <div>
-              <strong>Remaining:</strong> {invoice.currency}{" "}
-              {remaining.toFixed(2)}
+              <strong>Remaining:</strong> {invoice.currency} {remaining.toFixed(2)}
             </div>
           </div>
 
@@ -140,21 +162,12 @@ export default function PaymentModal({
 
             <div>
               <label className="kv">Date</label>
-              <input
-                className="input"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
+              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
 
             <div>
               <label className="kv">Payment Method</label>
-              <select
-                className="input"
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-              >
+              <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
                 <option>Cash</option>
                 <option>UPI</option>
                 <option>Bank Transfer</option>
@@ -165,39 +178,21 @@ export default function PaymentModal({
 
             <div>
               <label className="kv">Reference (optional)</label>
-              <input
-                className="input"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-              />
+              <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
 
             <div>
               <label className="kv">Note</label>
-              <textarea
-                className="input"
-                rows={2}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
+              <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
 
             {error && <div className="text-sm text-red-600">{error}</div>}
 
             <div className="flex gap-2 mt-3">
-              <button
-                type="button"
-                className="px-4 py-2 border rounded"
-                onClick={onClose}
-                disabled={loading}
-              >
+              <button type="button" className="px-4 py-2 border rounded" onClick={onClose} disabled={loading}>
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="btn px-4 py-2"
-                disabled={!canSubmit || loading}
-              >
+              <button type="submit" className="btn px-4 py-2" disabled={!canSubmit || loading}>
                 {loading ? "Processing..." : "Save Payment"}
               </button>
             </div>

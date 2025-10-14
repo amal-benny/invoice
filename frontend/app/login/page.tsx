@@ -1,57 +1,20 @@
-// "use client";
-// import { useRouter } from "next/navigation";
-// import { useState } from "react";
-
-// export default function LoginPage() {
-//   const router = useRouter();
-//   const [email, setEmail] = useState("admin@example.com");
-//   const [password, setPassword] = useState("Admin@123");
-//   const [loading, setLoading] = useState(false);
-
-//   async function submit(e: React.FormEvent) {
-//     e.preventDefault();
-//     setLoading(true);
-//     try {
-//       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000"}/api/auth/login`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ email, password })
-//       });
-//       const data = await res.json();
-//       if (!res.ok) throw new Error(data.message || JSON.stringify(data));
-//       // save token & user
-//       localStorage.setItem("token", data.token);
-//       localStorage.setItem("user", JSON.stringify(data.user));
-//       // redirect based on role
-//       if (data.user.role === "ADMIN") router.push("/admin/dashboard");
-//       else router.push("/user/dashboard");
-//     } catch (err:any) {
-//       alert("Login failed: " + (err.message || err));
-//     } finally {
-//       setLoading(false);
-//     }
-//   }
-
-//   return (
-//     <div className="min-h-screen flex items-center justify-center p-6">
-//       <div className="w-full max-w-md card">
-//         <h2 className="text-2xl font-semibold mb-4">Sign in</h2>
-//         <form onSubmit={submit} className="space-y-3">
-//           <input className="input" type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
-//           <input className="input" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
-//           <div className="flex justify-between items-center">
-//             <div className="kv">Demo: admin@example.com / Admin@123</div>
-//             <button className="btn" disabled={loading}>{loading ? "Signing..." : "Sign in"}</button>
-//           </div>
-//         </form>
-//       </div>
-//     </div>
-//   );
-// }
-
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+interface User {
+  id: number;
+  email: string;
+  fullName?: string;
+  role: "USER" | "ADMIN" | string;
+  tempPassword?: boolean;
+}
+
+interface LoginResponse {
+  token: string;
+  user: User;
+  message?: string;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -62,25 +25,33 @@ export default function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+
     try {
       const res = await fetch(
-        `${
-          process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000"
-        }/api/auth/login`,
+        `${process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000"}/api/auth/login`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
         }
       );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || JSON.stringify(data));
+
+      const data: LoginResponse = await res.json();
+
+      if (!res.ok) throw new Error(data.message || "Login failed");
+
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+
       if (data.user.role === "ADMIN") router.push("/admin/dashboard");
       else router.push("/user/dashboard");
-    } catch (err: any) {
-      alert("Login failed: " + (err.message || err));
+    } catch (err: unknown) {
+      // properly handle unknown type
+      if (err instanceof Error) {
+        alert("Login failed: " + err.message);
+      } else {
+        alert("Login failed: " + String(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -109,9 +80,7 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Worqit Invoice Maker
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">Worqit Invoice Maker</h1>
           <p className="text-gray-500 mt-1 text-center">
             Create and manage professional invoices
           </p>
@@ -147,10 +116,6 @@ export default function LoginPage() {
             {loading ? "Signing..." : "Login"}
           </button>
         </form>
-
-        {/* <p className="text-gray-400 text-sm mt-4 text-center">
-          Demo: admin@example.com / Admin@123
-        </p> */}
       </div>
     </div>
   );

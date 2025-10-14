@@ -1,18 +1,23 @@
-
 "use client";
+
 import { useEffect, useState } from "react";
-import Sidebar from "../../../components/Sidebar";
-import Topbar from "../../../components/Topbar";
-import DashboardSummary from "../../../components/DashboardSummary";
-import InvoiceForm from "../../../components/InvoiceForm";
-import CustomerList from "../../../components/CustomerList";
-import SettingsForm from "../../../components/SettingsForm";
+import dynamic from "next/dynamic";
 import { authFetch } from "../../../lib/api";
 import { useRouter } from "next/navigation";
-import Payments from "@/components/Payments";
-import InlineInvoiceView from "@/components/InlineInvoiceView";
-import InvoiceTable from "@/components/InvoiceTable";
-import Reports from "@/components/Reports";
+
+// Dynamically import all browser-dependent components
+const Sidebar = dynamic(() => import("../../../components/Sidebar"), { ssr: false });
+const Topbar = dynamic(() => import("../../../components/Topbar"), { ssr: false });
+const DashboardSummary = dynamic(() => import("../../../components/DashboardSummary"), { ssr: false });
+const InvoiceForm = dynamic(() => import("../../../components/InvoiceForm"), { ssr: false });
+const CustomerList = dynamic(() => import("../../../components/CustomerList"), { ssr: false });
+const SettingsForm = dynamic(() => import("../../../components/SettingsForm"), { ssr: false });
+const Payments = dynamic(() => import("@/components/Payments"), { ssr: false });
+const InlineInvoiceView = dynamic(() => import("@/components/InlineInvoiceView"), { ssr: false });
+const InvoiceTable = dynamic(() => import("@/components/InvoiceTable"), { ssr: false });
+const Reports = dynamic(() => import("@/components/Reports"), { ssr: false });
+
+import type { InvoicePayload } from "../../../components/InvoiceForm";
 
 type TabKey =
   | "dashboard"
@@ -25,15 +30,38 @@ type TabKey =
   | "invoiceview"
   | "setpassword";
 
+interface User {
+  id: number;
+  email: string;
+  fullName?: string;
+  role: "USER" | "ADMIN" | string;
+  tempPassword?: boolean;
+}
+
+interface Invoice {
+  id: number;
+  customerId?: number;
+  invoiceNumber?: string;
+  date?: string;
+  total?: number;
+  status?: string;
+}
+
+interface Settings {
+  name?: string;
+  logoPath?: string;
+  logoPreview?: string | null;
+  [key: string]: unknown;
+}
+
 export default function UserDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [selected, setSelected] = useState<TabKey>("dashboard");
-  const [settings, setSettings] = useState<any>(null); // full settings state
-  const [stats, setStats] = useState<any>(null);
-  const [viewInvoiceId, setViewInvoiceId] = useState<number | undefined>(undefined);
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [editInvoice, setEditInvoice] = useState<any | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [viewInvoiceId, setViewInvoiceId] = useState<number | undefined>();
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     const u = localStorage.getItem("user");
@@ -41,14 +69,13 @@ export default function UserDashboard() {
       router.push("/login");
       return;
     }
-    const parsed = JSON.parse(u);
+    const parsed: User = JSON.parse(u);
     if (parsed.role === "ADMIN") {
       router.push("/admin/dashboard");
       return;
     }
     setUser(parsed);
 
-    // Load settings from localStorage first
     const savedSettings = localStorage.getItem("settings");
     if (savedSettings) {
       setSettings(JSON.parse(savedSettings));
@@ -58,37 +85,41 @@ export default function UserDashboard() {
 
     loadSummary();
     loadInvoices();
-  }, []);
+  }, [router]);
 
   async function loadSettings() {
     try {
-      const s = await authFetch("/api/settings");
+      const s: Settings = await authFetch("/api/settings");
       if (s) {
         const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
-        const updated = {
+        const updated: Settings = {
           ...s,
           logoPreview: s.logoPath ? `${API}${s.logoPath}` : null,
         };
         setSettings(updated);
         localStorage.setItem("settings", JSON.stringify(updated));
       }
-    } catch (err) {
-      console.error("Failed to load settings", err);
+    } catch (error) {
+      console.error("Failed to load settings", error);
     }
   }
 
   async function loadSummary() {
     try {
-      const s = await authFetch("/api/reports/summary");
-      setStats(s);
-    } catch (err) {}
+      await authFetch("/api/reports/summary");
+    } catch (error) {
+      console.error("Failed to load summary", error);
+    }
   }
 
   async function loadInvoices() {
     try {
-      const data = await authFetch("/api/invoices");
+      const data: Invoice[] = await authFetch("/api/invoices");
       setInvoices(data || []);
-    } catch (err) {}
+    } catch (error) {
+      console.error("Failed to load invoices", error);
+      setInvoices([]);
+    }
   }
 
   function logout() {
@@ -97,15 +128,14 @@ export default function UserDashboard() {
     router.push("/login");
   }
 
-  // Sidebar logo: uses saved logoPreview if exists
-  const sidebarLogo = settings?.logoPreview;
+  const sidebarLogo = settings?.logoPreview || undefined;
 
   return (
     <div className="min-h-screen flex">
       <Sidebar
         role="USER"
-        selected={selected as any}
-        onSelect={(k) => setSelected(k)}
+        selected={selected}
+        onSelect={(k: TabKey) => setSelected(k)}
         logoUrl={sidebarLogo}
         companyName={settings?.name || "Invoice Maker"}
       />
@@ -120,29 +150,30 @@ export default function UserDashboard() {
                   New Quotation
                 </button>
               </div>
-              <DashboardSummary  />
-
+              <DashboardSummary />
               <InvoiceTable
                 invoices={invoices}
-                onConvert={loadInvoices} 
+                onConvert={loadInvoices}
                 onPaymentSuccess={loadInvoices}
-                onView={(id) => {
+                onView={(id: number) => {
                   setViewInvoiceId(id);
                   setSelected("invoiceview");
                 }}
-                onEdit={async (id) => {
+                onEdit={async (id: number) => {
                   try {
-                    const inv = await authFetch(`/api/invoices/${id}`);
-                    setSelected("invoice");
+                    const inv: Invoice = await authFetch(`/api/invoices/${id}`);
                     setEditInvoice(inv);
-                  } catch (err) {}
+                    setSelected("invoice");
+                  } catch {
+                    console.error("Failed to load invoice for edit");
+                  }
                 }}
-                onDelete={async (id) => {
+                onDelete={async (id: number) => {
                   if (!confirm("Are you sure you want to delete this invoice?")) return;
                   try {
                     await authFetch(`/api/invoices/${id}`, { method: "DELETE" });
                     loadInvoices();
-                  } catch (err) {
+                  } catch {
                     alert("Failed to delete invoice.");
                   }
                 }}
@@ -152,9 +183,32 @@ export default function UserDashboard() {
 
           {selected === "invoice" && (
             <InvoiceForm
-              initialInvoice={editInvoice}
-              onCreated={(inv) => {
-                setViewInvoiceId(inv?.id);
+              initialInvoice={
+                editInvoice
+                  ? {
+                      id: editInvoice.id,
+                      type: "INVOICE",
+                      customerId: editInvoice.customerId,
+                      customerName: "",
+                      customerCompany: "",
+                      customerEmail: "",
+                      customerPhone: "",
+                      customerAddress: "",
+                      date: editInvoice.date || new Date().toISOString().slice(0, 10),
+                      items: [],
+                      currency: "INR",
+                      subtotal: 0,
+                      totalGST: 0,
+                      totalDiscount: 0,
+                      advancePaid: 0,
+                      total: editInvoice.total || 0,
+                      remark: "",
+                      note: "",
+                    }
+                  : undefined
+              }
+              onCreated={(inv: InvoicePayload) => {
+                setViewInvoiceId(inv.id);
                 setSelected("invoiceview");
                 loadSummary();
                 loadInvoices();
@@ -167,7 +221,15 @@ export default function UserDashboard() {
             <InlineInvoiceView
               invoiceId={viewInvoiceId}
               companyLogo={sidebarLogo}
-              companyDetails={settings}
+              companyDetails={
+                settings
+                  ? {
+                      name: settings.name || "",
+                      logoPath: settings.logoPath,
+                      logoPreview: settings.logoPreview || undefined,
+                    }
+                  : undefined
+              }
               onBack={() => setSelected("invoice")}
             />
           )}
@@ -176,7 +238,7 @@ export default function UserDashboard() {
           {selected === "settings" && (
             <SettingsForm
               initialSettings={settings}
-              onSettingsUpdate={(s) => {
+              onSettingsUpdate={(s: Settings) => {
                 setSettings(s);
                 localStorage.setItem("settings", JSON.stringify(s));
               }}
@@ -194,6 +256,7 @@ export default function UserDashboard() {
 function SetPasswordPanel() {
   const [oldPassword, setOld] = useState("");
   const [newPassword, setNew] = useState("");
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -203,10 +266,12 @@ function SetPasswordPanel() {
         headers: { "Content-Type": "application/json" },
       });
       alert("Password changed - you can now login again");
-    } catch (err: any) {
-      alert("Failed: " + (err.message || err));
+    } catch (error) {
+      if (error instanceof Error) alert("Failed: " + error.message);
+      else alert("Failed: " + String(error));
     }
   }
+
   return (
     <div className="card">
       <form onSubmit={submit} className="grid grid-cols-1 gap-2">

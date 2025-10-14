@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { authFetch } from "../lib/api";
 import { Wallet, CreditCard, TrendingUp, DollarSign } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -26,12 +26,22 @@ interface Balance {
   date: string;
 }
 
-type Ledger = {
+interface Ledger {
   id: number;
   category: string;
-};
+}
 
-// Add this helper at the top of your file
+interface Settings {
+  logoPreview?: string;
+  name?: string;
+  address?: string;
+  contact?: string;
+  email?: string;
+  stateName?: string;
+  gstNumber?: string;
+}
+
+// --- Helper: number to words ---
 function numberToWords(num: number): string {
   if (!num && num !== 0) return "";
   num = Math.floor(num);
@@ -57,45 +67,15 @@ function numberToWords(num: number): string {
     "Eighteen",
     "Nineteen",
   ];
-  const b = [
-    "",
-    "",
-    "Twenty",
-    "Thirty",
-    "Forty",
-    "Fifty",
-    "Sixty",
-    "Seventy",
-    "Eighty",
-    "Ninety",
-  ];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
 
   function inWords(n: number): string {
     if (n < 20) return a[n];
     if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
-    if (n < 1000)
-      return (
-        a[Math.floor(n / 100)] +
-        " Hundred" +
-        (n % 100 ? " " + inWords(n % 100) : "")
-      );
-    if (n < 100000)
-      return (
-        inWords(Math.floor(n / 1000)) +
-        " Thousand" +
-        (n % 1000 ? " " + inWords(n % 1000) : "")
-      );
-    if (n < 10000000)
-      return (
-        inWords(Math.floor(n / 100000)) +
-        " Lakh" +
-        (n % 100000 ? " " + inWords(n % 100000) : "")
-      );
-    return (
-      inWords(Math.floor(n / 10000000)) +
-      " Crore" +
-      (n % 10000000 ? " " + inWords(n % 10000000) : "")
-    );
+    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
   }
 
   return inWords(num) || "Zero";
@@ -133,40 +113,17 @@ export default function Payments() {
     bankNet: 0,
     bankClosing: 0,
   });
-  const [downloadRange, setDownloadRange] = useState<{
-    startDate?: string;
-    endDate?: string;
-  }>({
+  const [downloadRange, setDownloadRange] = useState<{ startDate?: string; endDate?: string }>({
     startDate: "",
     endDate: "",
   });
 
-  useEffect(() => {
-    loadBalances();
-    loadTransactions();
-    loadLedgers();
-  }, []);
-
-  useEffect(() => {
-    calculateSummary();
-  }, [transactions, balances]);
-
-  async function loadLedgers() {
-    try {
-      const data: Ledger[] = await authFetch("/api/payment-ledgers");
-      if (Array.isArray(data)) setLedgers(data);
-    } catch (err) {
-      console.error("Failed to load ledgers", err);
-    }
-  }
-
-  // --- Load balances ---
-  async function loadBalances() {
+  // --- Callbacks ---
+  const loadBalances = useCallback(async () => {
     const data: Balance[] = await authFetch("/api/transactions/balance");
     setBalances(data);
 
-    const existingBalance =
-      data.find((b: Balance) => b.method === newMethod) || null;
+    const existingBalance = data.find((b) => b.method === newMethod) || null;
     if (existingBalance) {
       setEditingBalance(existingBalance);
       setNewBalance(existingBalance.amount);
@@ -174,16 +131,68 @@ export default function Payments() {
       setEditingBalance(null);
       setNewBalance(0);
     }
-  }
+  }, [newMethod]);
 
-  // --- Load transactions ---
-  async function loadTransactions() {
-    const query = new URLSearchParams(search as any).toString();
+  const loadTransactions = useCallback(async () => {
+    const query = new URLSearchParams(search).toString();
     const data: Transaction[] = await authFetch(`/api/transactions?${query}`);
     setTransactions(data);
-  }
+  }, [search]);
 
-  // --- Add or update starting balance ---
+  const loadLedgers = useCallback(async () => {
+    try {
+      const data: Ledger[] = await authFetch("/api/payment-ledgers");
+      if (Array.isArray(data)) setLedgers(data);
+    } catch (err) {
+      console.error("Failed to load ledgers", err);
+    }
+  }, []);
+
+  // --- Effects ---
+  useEffect(() => {
+    loadBalances();
+    loadTransactions();
+    loadLedgers();
+  }, [loadBalances, loadTransactions, loadLedgers]);
+
+  const calculateSummary = useCallback(() => {
+    const cashStarting = balances.find((b) => b.method === "Cash")?.amount || 0;
+    const bankStarting = balances.find((b) => b.method === "Bank")?.amount || 0;
+
+    let cashIncome = 0,
+      cashExpense = 0,
+      bankIncome = 0,
+      bankExpense = 0;
+
+    transactions.forEach((tx) => {
+      if (tx.method === "Cash") {
+        if (tx.type === "INCOME") cashIncome += tx.amount;
+        else cashExpense += tx.amount;
+      } else {
+        if (tx.type === "INCOME") bankIncome += tx.amount;
+        else bankExpense += tx.amount;
+      }
+    });
+
+    setStats({
+      cashStarting,
+      cashIncome,
+      cashExpense,
+      cashNet: cashIncome - cashExpense,
+      cashClosing: cashStarting + cashIncome - cashExpense,
+      bankStarting,
+      bankIncome,
+      bankExpense,
+      bankNet: bankIncome - bankExpense,
+      bankClosing: bankStarting + bankIncome - bankExpense,
+    });
+  }, [balances, transactions]);
+
+  useEffect(() => {
+    calculateSummary();
+  }, [transactions, balances, calculateSummary]);
+
+  // --- Add/update balance ---
   async function addOrUpdateBalance() {
     if (!newBalance) return;
 
@@ -204,7 +213,7 @@ export default function Payments() {
     setNewBalance(0);
     setEditingBalance(null);
     setNewMethod("Cash");
-    loadBalances();
+    await loadBalances();
   }
 
   // --- Add transaction ---
@@ -225,52 +234,12 @@ export default function Payments() {
       reference: "",
     });
     setUseOtherCategory(false);
-
-    loadTransactions();
+    await loadTransactions();
   }
 
-  // --- Calculate summary ---
-  function calculateSummary() {
-    let cashStarting =
-      balances.find((b: Balance) => b.method === "Cash")?.amount || 0;
-    let bankStarting =
-      balances.find((b: Balance) => b.method === "Bank")?.amount || 0;
-
-    let cashIncome = 0,
-      cashExpense = 0,
-      bankIncome = 0,
-      bankExpense = 0;
-
-    transactions.forEach((tx: Transaction) => {
-      if (tx.method === "Cash") {
-        tx.type === "INCOME"
-          ? (cashIncome += tx.amount)
-          : (cashExpense += tx.amount);
-      } else {
-        tx.type === "INCOME"
-          ? (bankIncome += tx.amount)
-          : (bankExpense += tx.amount);
-      }
-    });
-
-    setStats({
-      cashStarting,
-      cashIncome,
-      cashExpense,
-      cashNet: cashIncome - cashExpense,
-      cashClosing: cashStarting + cashIncome - cashExpense,
-      bankStarting,
-      bankIncome,
-      bankExpense,
-      bankNet: bankIncome - bankExpense,
-      bankClosing: bankStarting + bankIncome - bankExpense,
-    });
-  }
-
+  // --- Download Excel ---
   function downloadExcel() {
-    const start = downloadRange.startDate
-      ? new Date(downloadRange.startDate)
-      : null;
+    const start = downloadRange.startDate ? new Date(downloadRange.startDate) : null;
     const end = downloadRange.endDate ? new Date(downloadRange.endDate) : null;
 
     const filtered = transactions.filter((tx) => {
@@ -295,15 +264,12 @@ export default function Payments() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Transactions");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(
-      new Blob([buf], { type: "application/octet-stream" }),
-      "transactions.xlsx"
-    );
+    saveAs(new Blob([buf], { type: "application/octet-stream" }), "transactions.xlsx");
   }
 
   function printRow(tx: Transaction) {
     // load settings (saved by SettingsForm into localStorage)
-    let settings: any = null;
+    let settings: Settings | null = null;
     try {
       const s = localStorage.getItem("settings");
       if (s) settings = JSON.parse(s);

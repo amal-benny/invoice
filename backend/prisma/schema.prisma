@@ -92,6 +92,12 @@ model Invoice {
   payments         Payment[]
 }
 
+model InvoiceSequence {
+  year Int  @id
+  last Int  @default(0)
+}
+
+
 model InvoiceItem {
   id          Int      @id @default(autoincrement())
   invoice     Invoice  @relation(fields: [invoiceId], references: [id])

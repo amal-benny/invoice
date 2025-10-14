@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { authFetch } from "../lib/api";
 import {
   BarChart,
@@ -16,17 +16,18 @@ import {
 
 type Invoice = {
   id: number;
-  invoiceNumber: string;
+  invoiceNumber?: string;
   status: "PAID" | "UNPAID" | "PARTIAL" | "PENDING";
-  total: number;
-  advancePaid: number;
-  createdAt: string;
+  total?: number;
+  advancePaid?: number;
+  createdAt?: string;
+  date?: string; // backend used date field in some endpoints
 };
 
 type Customer = {
   id: number;
-  name: string;
-  createdAt: string;
+  name?: string;
+  createdAt?: string;
   invoices?: Invoice[];
 };
 
@@ -39,63 +40,157 @@ type Transaction = {
   date: string;
 };
 
-function getDateRange(type: "today" | "week" | "month") {
-  const now = new Date();
-  switch (type) {
-    case "today":
-      return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
-    case "week": {
-      const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
-      return [new Date(now.setDate(diff)), new Date()];
-    }
-    case "month":
-      return [new Date(now.getFullYear(), now.getMonth(), 1), new Date()];
-  }
+function formatRangeLabel(from?: string, to?: string) {
+  if (!from && !to) return "All time";
+  if (from && to) return `${from} → ${to}`;
+  if (from) return `From ${from}`;
+  return `Until ${to}`;
 }
 
 export default function Reports() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // date filter states (yyyy-mm-dd)
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
   useEffect(() => {
+    // load initial data with no date filter (or you could initialize defaults)
     loadData();
   }, []);
 
-  async function loadData() {
+  async function loadData(opts?: { from?: string; to?: string }) {
     try {
-      const inv: Invoice[] = await authFetch("/api/invoices");
-      const cust: Customer[] = await authFetch("/api/customers");
-      const txn: Transaction[] = await authFetch("/api/transactions");
-      setInvoices(inv);
-      setCustomers(cust);
-      setTransactions(txn);
+      setLoading(true);
+      setError("");
+
+      const qs = new URLSearchParams();
+      if (opts?.from) qs.set("from", opts.from);
+      if (opts?.to) qs.set("to", opts.to);
+
+      const inv: Invoice[] = await authFetch(
+        `/api/invoices${qs.toString() ? "?" + qs.toString() : ""}`
+      );
+      const cust: Customer[] = await authFetch(
+        `/api/customers${qs.toString() ? "?" + qs.toString() : ""}`
+      );
+      const txn: Transaction[] = await authFetch(
+        `/api/transactions${qs.toString() ? "?" + qs.toString() : ""}`
+      );
+
+      setInvoices(inv || []);
+      setCustomers(cust || []);
+      setTransactions(txn || []);
     } catch (err) {
       console.error("Failed to load data", err);
+      setError("Failed to load data. See console for details.");
+    } finally {
+      setLoading(false);
     }
+  }
+
+  // helper: parse date-only strings into Date objects.
+  function parseStartEnd(from?: string, to?: string) {
+    if (!from && !to) return null;
+    const start = from ? new Date(from + "T00:00:00") : undefined;
+    let end = to ? new Date(to + "T00:00:00") : undefined;
+    if (end) {
+      // extend to end of day to include whole "to" day
+      end.setHours(23, 59, 59, 999);
+    }
+    return { start, end };
   }
 
   // --- INVOICE REPORT ---
   const invoiceReport = useMemo(() => {
+    // If user selected a custom from/to show a single 'range' bar
+    if (dateFrom || dateTo) {
+      const parsed = parseStartEnd(dateFrom, dateTo);
+      const count = invoices.filter((inv) => {
+        const d = new Date(inv.createdAt ?? inv.date ?? "");
+        if (isNaN(d.getTime())) return false;
+        if (parsed?.start && d < parsed.start) return false;
+        if (parsed?.end && d > parsed.end) return false;
+        return true;
+      }).length;
+      return [{ period: formatRangeLabel(dateFrom, dateTo), count }];
+    }
+
+    // fallback: original today/week/month behaviour
+    function getDateRange(type: "today" | "week" | "month") {
+      const now = new Date();
+      switch (type) {
+        case "today":
+          return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
+        case "week": {
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
+          return [new Date(now.setDate(diff)), new Date()];
+        }
+        case "month":
+          return [new Date(now.getFullYear(), now.getMonth(), 1), new Date()];
+      }
+    }
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
     return types.map((type) => {
       const [start, end] = getDateRange(type);
       const count = invoices.filter((inv) => {
-        const d = new Date(inv.createdAt);
+        const d = new Date(inv.createdAt ?? inv.date ?? "");
         return d >= start && d <= end;
       }).length;
       return { period: type, count };
     });
-  }, [invoices]);
+  }, [invoices, dateFrom, dateTo]);
 
   // --- CUSTOMER REPORT ---
   const customerReport = useMemo(() => {
+    if (dateFrom || dateTo) {
+      const parsed = parseStartEnd(dateFrom, dateTo);
+      const filteredCustomers = customers.filter((c) => {
+        const d = new Date(c.createdAt ?? "");
+        if (isNaN(d.getTime())) return false;
+        if (parsed?.start && d < parsed.start) return false;
+        if (parsed?.end && d > parsed.end) return false;
+        return true;
+      });
+      const paid = filteredCustomers.filter((c) =>
+        c.invoices?.some((inv) => inv.status === "PAID")
+      ).length;
+      const unpaid = filteredCustomers.length - paid;
+      return [
+        {
+          period: formatRangeLabel(dateFrom, dateTo),
+          total: filteredCustomers.length,
+          paid,
+          unpaid,
+        },
+      ];
+    }
+
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
+    function getDateRange(type: "today" | "week" | "month") {
+      const now = new Date();
+      switch (type) {
+        case "today":
+          return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
+        case "week": {
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
+          return [new Date(now.setDate(diff)), new Date()];
+        }
+        case "month":
+          return [new Date(now.getFullYear(), now.getMonth(), 1), new Date()];
+      }
+    }
+
     return types.map((type) => {
       const [start, end] = getDateRange(type);
       const filteredCustomers = customers.filter((c) => {
-        const d = new Date(c.createdAt);
+        const d = new Date(c.createdAt ?? "");
         return d >= start && d <= end;
       });
 
@@ -111,58 +206,187 @@ export default function Reports() {
         unpaid,
       };
     });
-  }, [customers]);
+  }, [customers, dateFrom, dateTo]);
 
   // --- STATUS REPORT ---
   const statusReport = useMemo(() => {
-    const statusTypes: Invoice["status"][] = ["PAID", "UNPAID", "PENDING", "PARTIAL"];
+    const statusTypes: Invoice["status"][] = [
+      "PAID",
+      "UNPAID",
+      "PENDING",
+      "PARTIAL",
+    ];
+    // For status we can show counts of invoices (if date range provided, those invoices are already filtered from backend but we'll double-check client-side)
+    if (dateFrom || dateTo) {
+      const parsed = parseStartEnd(dateFrom, dateTo);
+      const filtered = invoices.filter((inv) => {
+        const d = new Date(inv.createdAt ?? inv.date ?? "");
+        if (isNaN(d.getTime())) return false;
+        if (parsed?.start && d < parsed.start) return false;
+        if (parsed?.end && d > parsed.end) return false;
+        return true;
+      });
+      return statusTypes.map((status) => ({
+        name: status,
+        value: filtered.filter((inv) => inv.status === status).length,
+      }));
+    }
     return statusTypes.map((status) => ({
       name: status,
       value: invoices.filter((inv) => inv.status === status).length,
     }));
-  }, [invoices]);
+  }, [invoices, dateFrom, dateTo]);
 
   // --- TRANSACTION REPORT ---
   const transactionReport = useMemo(() => {
+    if (dateFrom || dateTo) {
+      const parsed = parseStartEnd(dateFrom, dateTo);
+      const filtered = transactions.filter((tx) => {
+        const d = new Date(tx.date);
+        if (isNaN(d.getTime())) return false;
+        if (parsed?.start && d < parsed.start) return false;
+        if (parsed?.end && d > parsed.end) return false;
+        return true;
+      });
+      const income = filtered
+        .filter((tx) => tx.type === "INCOME")
+        .reduce((a, t) => a + t.amount, 0);
+      const expense = filtered
+        .filter((tx) => tx.type === "EXPENSE")
+        .reduce((a, t) => a + t.amount, 0);
+      return [{ period: formatRangeLabel(dateFrom, dateTo), income, expense }];
+    }
+
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
+    function getDateRange(type: "today" | "week" | "month") {
+      const now = new Date();
+      switch (type) {
+        case "today":
+          return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
+        case "week": {
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
+          return [new Date(now.setDate(diff)), new Date()];
+        }
+        case "month":
+          return [new Date(now.getFullYear(), now.getMonth(), 1), new Date()];
+      }
+    }
+
     return types.map((type) => {
       const [start, end] = getDateRange(type);
       const filtered = transactions.filter((tx) => {
         const d = new Date(tx.date);
         return d >= start && d <= end;
       });
-      const income = filtered.filter((tx) => tx.type === "INCOME").reduce((a, t) => a + t.amount, 0);
-      const expense = filtered.filter((tx) => tx.type === "EXPENSE").reduce((a, t) => a + t.amount, 0);
+      const income = filtered
+        .filter((tx) => tx.type === "INCOME")
+        .reduce((a, t) => a + t.amount, 0);
+      const expense = filtered
+        .filter((tx) => tx.type === "EXPENSE")
+        .reduce((a, t) => a + t.amount, 0);
       return { period: type, income, expense };
     });
-  }, [transactions]);
+  }, [transactions, dateFrom, dateTo]);
 
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
+  const COLORS = ["#259230ff", "#de2a06ff", "#eea810ff", "#FF8042"];
+
+  // handlers
+  function onApply() {
+    setError("");
+    if (dateFrom && dateTo) {
+      const f = new Date(dateFrom + "T00:00:00").getTime();
+      const t = new Date(dateTo + "T00:00:00").getTime();
+      if (f > t) {
+        setError("From date cannot be after To date.");
+        return;
+      }
+    }
+    // send only set params
+    loadData({ from: dateFrom || undefined, to: dateTo || undefined });
+  }
+
+  function onReset() {
+    setDateFrom("");
+    setDateTo("");
+    setError("");
+    loadData(); // load all / fallback behaviour
+  }
 
   return (
     <div className="p-4 space-y-6">
       <h2 className="text-2xl font-bold mb-4">Reports</h2>
 
+      {/* Date filter UI */}
+      <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-4">
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="border rounded px-2 py-1"
+            max={dateTo || undefined}
+          />
+        </label>
+
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="border rounded px-2 py-1"
+            min={dateFrom || undefined}
+          />
+        </label>
+
+        <div className="flex items-center gap-2 mt-2 md:mt-0">
+          <button
+            onClick={onApply}
+            className="text-white px-3 py-1 rounded hover:opacity-90 disabled:opacity-60"
+            style={{ backgroundColor: "rgb(128, 41, 73)" }}
+            disabled={loading}
+          >
+            Apply
+          </button>
+          <button
+            onClick={onReset}
+            className="bg-gray-200 text-gray-800 px-3 py-1 rounded hover:opacity-90"
+            disabled={loading}
+          >
+            Reset
+          </button>
+        </div>
+
+        {loading && (
+          <div className="text-sm text-gray-600 ml-2">Loading...</div>
+        )}
+        {error && <div className="text-sm text-red-600 ml-2">{error}</div>}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Invoice Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
-          <h3 className="font-semibold mb-2 text-gray-700">Invoices (Today/Week/Month)</h3>
-          <ResponsiveContainer width="100%" height={200}>
+          <h3 className="font-semibold mb-2 text-gray-700">Invoices</h3>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={invoiceReport}>
               <XAxis dataKey="period" />
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="count" fill="#0088FE" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="count" fill="#2c4272ff" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Customer Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
-          <h3 className="font-semibold mb-2 text-gray-700">Customers (Added / Paid / Unpaid)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={customerReport}>
+          <h3 className="font-semibold mb-2 text-gray-700">
+            Customers (Added / Paid / Unpaid)
+          </h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={customerReport as any}>
               <XAxis dataKey="period" />
               <YAxis />
               <Tooltip />
@@ -177,7 +401,7 @@ export default function Reports() {
         {/* Status Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
           <h3 className="font-semibold mb-2 text-gray-700">Invoice Status</h3>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie
                 data={statusReport}
@@ -187,7 +411,10 @@ export default function Reports() {
                 outerRadius={80}
               >
                 {statusReport.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                  />
                 ))}
               </Pie>
               <Tooltip />
@@ -198,14 +425,16 @@ export default function Reports() {
 
         {/* Transaction Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
-          <h3 className="font-semibold mb-2 text-gray-700">Transactions (Income / Expense)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={transactionReport}>
+          <h3 className="font-semibold mb-2 text-gray-700">
+            Transactions (Income / Expense)
+          </h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={transactionReport as any}>
               <XAxis dataKey="period" />
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="income" fill="#0088FE" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="income" fill="#52a3eaff" radius={[4, 4, 0, 0]} />
               <Bar dataKey="expense" fill="#FF8042" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
