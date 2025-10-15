@@ -3,25 +3,24 @@ import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash } from "lucide-react";
 
-type Payment = {
+// Define types
+export type Payment = {
   id: number;
   amount: number;
-  date?: string;
 };
 
-type Invoice = {
+export type Invoice = {
   id: number;
   subtotal?: number;
   totalGST?: number;
   totalDiscount?: number;
-  total?: number;
   advancePaid?: number;
   payments?: Payment[];
 };
 
-type Customer = {
+export type Customer = {
   id: number;
-  name: string;
+  name?: string;
   company?: string;
   email?: string;
   phone?: string;
@@ -33,12 +32,15 @@ type Customer = {
   invoices?: Invoice[];
 };
 
+type CustomerForm = Omit<Customer, "id" | "invoices">;
+
 export default function CustomerList() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(""); // ✅ search state
 
-  const [form, setForm] = useState({
+  // form state (shared for create & edit)
+  const [form, setForm] = useState<CustomerForm>({
     name: "",
     company: "",
     email: "",
@@ -56,10 +58,11 @@ export default function CustomerList() {
   async function load() {
     setLoading(true);
     try {
-      const data: Customer[] = await authFetch("/api/customers");
+      // include invoices & payments so we can calculate paid/balance
+      const data = await authFetch("/api/customers") as Customer[];
       setCustomers(data || []);
-    } catch {
-      alert("Failed to load customers");
+    } catch (err) {
+      alert("Failed to load customers" +err);
     } finally {
       setLoading(false);
     }
@@ -119,9 +122,8 @@ export default function CustomerList() {
       }
       resetForm();
       load();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      alert("Save failed: " + msg);
+    } catch (err) {
+      alert("Save failed: " + ( err));
     } finally {
       setSaving(false);
     }
@@ -133,40 +135,43 @@ export default function CustomerList() {
       await authFetch(`/api/customers/${id}`, { method: "DELETE" });
       if (editing === id) resetForm();
       load();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Delete failed";
-      alert("Delete failed: " + msg);
+    } catch (err) {
+       alert("Delete failed: " + err);
+      
     }
   }
 
   // Calculate totals for a customer
   function computeCustomerAmounts(customer: Customer) {
     const invs = Array.isArray(customer?.invoices) ? customer.invoices : [];
-    let totalPaid = 0;
     let totalDue = 0;
+    let totalPaid = 0;
 
     for (const inv of invs) {
-      const subtotal = Number(inv.subtotal || 0);
-      const gst = Number(inv.totalGST || 0);
-      const discount = Number(inv.totalDiscount || 0);
+      const subtotal = Number(inv?.subtotal || 0);
+      const gst = Number(inv?.totalGST || 0);
+      const discount = Number(inv?.totalDiscount || 0);
+
       const invoiceAmount = subtotal - discount + gst;
       totalDue += invoiceAmount;
 
-      const advance = Number(inv.advancePaid || 0);
-      const paymentsSum = Array.isArray(inv.payments)
-        ? inv.payments.reduce((sum: number, p: Payment) => sum + Number(p.amount || 0), 0)
+      const advance = Number(inv?.advancePaid || 0);
+      const paymentsSum = Array.isArray(inv?.payments)
+        ? inv.payments.reduce((s, p) => s + Number(p?.amount || 0), 0)
         : 0;
 
       totalPaid += advance + paymentsSum;
     }
 
+    totalDue = Math.round(totalDue * 100) / 100;
     totalPaid = Math.round(totalPaid * 100) / 100;
-    const balance = Math.max(Math.round(totalDue * 100) / 100 - totalPaid, 0);
+    const balance = Math.max(totalDue - totalPaid, 0);
 
-    return { totalPaid, balance }; // Removed totalDue from return to avoid ESLint warning
+    return { totalDue, totalPaid, balance };
   }
 
-  const filteredCustomers = customers.filter((c: Customer) => {
+  // filter customers by search (name or company)
+  const filteredCustomers = customers.filter(c => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     const name = String(c.name || "").toLowerCase();
@@ -243,18 +248,19 @@ export default function CustomerList() {
                     {c.address && <div className="text-sm mt-1">{c.address}</div>}
                   </div>
 
+                  {/* Right side: Paid & Balance + Actions */}
                   <div className="flex flex-col items-end gap-3">
                     <div className="text-sm text-right">
                       <div className="mb-1">
                         <span className="text-xs kv">Paid</span>
                         <div className="font-semibold text-green-700">
-                          ₹ {Number(totalPaid).toFixed(2)}
+                          ₹ {Number(totalPaid || 0).toFixed(2)}
                         </div>
                       </div>
                       <div>
                         <span className="text-xs kv">Balance</span>
                         <div className={`font-semibold ${balance > 0 ? "text-red-700" : "text-gray-600"}`}>
-                          ₹ {Number(balance).toFixed(2)}
+                          ₹ {Number(balance || 0).toFixed(2)}
                         </div>
                       </div>
                     </div>

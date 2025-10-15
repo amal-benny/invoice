@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { authFetch } from "../lib/api";
-import QuotationCategories from "./QuotationCategories";
-import PaymentLedgers from "./PaymentLedgers";
+import QuotationCategories from "../components/QuotationCategories";
+import PaymentLedgers from "../components/PaymentLedgers";
 
-export interface Settings {
+type Settings = {
   name?: string;
   address?: string;
   contact?: string;
@@ -14,22 +13,21 @@ export interface Settings {
   currency?: string;
   stateName?: string;
   stateCode?: string;
-  taxPercent?: string;
+  taxPercent?: number | string;
   taxType?: string;
   logoPath?: string;
-  logoPreview?: string | null;
-  [key: string]: unknown;
-}
+};
 
-interface Props {
-  initialSettings?: Settings| null;
-  onSettingsUpdate?: (s: Settings) => void;
-}
-
-export default function SettingsForm({ initialSettings, onSettingsUpdate }: Props) {
+export default function SettingsForm({
+  initialSettings,
+  onSettingsUpdate,
+}: {
+  initialSettings?: Settings | null;
+  onSettingsUpdate?: (s: Settings & { logoPreview?: string | null }) => void;
+}) {
   const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 
-  const [settings, setSettings] = useState<Settings>(initialSettings || {});
+  const [settings, setSettings] = useState<Settings | null>(initialSettings || null);
   const [form, setForm] = useState({
     name: initialSettings?.name || "",
     address: initialSettings?.address || "",
@@ -45,7 +43,6 @@ export default function SettingsForm({ initialSettings, onSettingsUpdate }: Prop
         : "",
     taxType: initialSettings?.taxType || "GST",
   });
-
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(
     initialSettings?.logoPath ? `${API}${initialSettings.logoPath}` : null
@@ -55,7 +52,7 @@ export default function SettingsForm({ initialSettings, onSettingsUpdate }: Prop
     if (!initialSettings) {
       (async () => {
         try {
-          const s: Settings = await authFetch("/api/settings");
+          const s = (await authFetch("/api/settings")) as Settings;
           if (s) {
             setSettings(s);
             setForm({
@@ -68,33 +65,40 @@ export default function SettingsForm({ initialSettings, onSettingsUpdate }: Prop
               stateName: s.stateName || "",
               stateCode: s.stateCode || "",
               taxPercent:
-                s.taxPercent !== undefined && s.taxPercent !== null ? String(s.taxPercent) : "",
+                s.taxPercent !== undefined && s.taxPercent !== null
+                  ? String(s.taxPercent)
+                  : "",
               taxType: s.taxType || "GST",
             });
-            const preview = s.logoPath ? `${API}${s.logoPath}` : null;
-            setLogoPreview(preview);
-            onSettingsUpdate?.({ ...s, logoPreview: preview });
+            setLogoPreview(s.logoPath ? `${API}${s.logoPath}` : null);
+            onSettingsUpdate?.({
+              ...s,
+              logoPreview: s.logoPath ? `${API}${s.logoPath}` : null,
+            });
           }
         } catch (err) {
           console.error("Failed to load settings", err);
         }
       })();
     }
-  }, [initialSettings, onSettingsUpdate]);
+  }, [initialSettings]);
 
   useEffect(() => {
-    const updated: Settings = { ...settings, ...form, logoPreview };
+    const updated = { ...settings, ...form, logoPreview };
     onSettingsUpdate?.(updated);
-  }, [form, logoPreview, settings, onSettingsUpdate]);
+  }, [form, logoPreview]);
 
   function handleLogoChange(file: File | null) {
     setLogoFile(file);
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
-        const preview = reader.result as string;
-        setLogoPreview(preview);
-        onSettingsUpdate?.({ ...settings, ...form, logoPreview: preview });
+        setLogoPreview(reader.result as string);
+        onSettingsUpdate?.({
+          ...settings,
+          ...form,
+          logoPreview: reader.result as string,
+        });
       };
       reader.readAsDataURL(file);
     } else {
@@ -107,126 +111,146 @@ export default function SettingsForm({ initialSettings, onSettingsUpdate }: Prop
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const fd = new FormData();
-    Object.entries(form).forEach(([key, value]) => {
-      if (value) fd.append(key, value);
-    });
+    fd.append("name", form.name);
+    fd.append("address", form.address);
+    fd.append("contact", form.contact);
+    fd.append("gstNumber", form.gstNumber);
+    fd.append("panNumber", form.panNumber);
+    fd.append("currency", form.currency);
+    fd.append("stateName", form.stateName);
+    fd.append("stateCode", form.stateCode);
+
+    if (form.taxPercent) fd.append("taxPercent", form.taxPercent);
+    if (form.taxType) fd.append("taxType", form.taxType);
     if (logoFile) fd.append("logo", logoFile);
 
     try {
       const raw = await fetch(`${API}/api/settings`, {
         method: "POST",
         body: fd,
-        headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        },
       });
+
       if (!raw.ok) throw new Error(await raw.text());
       const res: Settings = await raw.json();
       setSettings(res);
       setLogoPreview(res.logoPath ? `${API}${res.logoPath}` : null);
-      onSettingsUpdate?.({ ...res, logoPreview: res.logoPath ? `${API}${res.logoPath}` : null });
+      onSettingsUpdate?.({
+        ...res,
+        logoPreview: res.logoPath ? `${API}${res.logoPath}` : null,
+      });
       alert("Settings saved successfully!");
     } catch (err: unknown) {
-      alert("Save failed: " + (err));
+      if (err instanceof Error) {
+        alert("Save failed: " + err.message);
+      } else {
+        alert("Save failed");
+      }
     }
   }
 
   return (
     <>
-      <div className="card">
-        <h3 className="text-lg font-semibold mb-3">Company Details</h3>
-        <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-          <input
-            className="input"
-            placeholder="Company name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          <input
-            className="input"
-            placeholder="Contact"
-            value={form.contact}
-            onChange={(e) => setForm({ ...form, contact: e.target.value })}
-          />
-          <input
-            className="input col-span-2"
-            placeholder="Address"
-            value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="GST Number"
-            value={form.gstNumber}
-            onChange={(e) => setForm({ ...form, gstNumber: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="PAN Number"
-            value={form.panNumber}
-            onChange={(e) => setForm({ ...form, panNumber: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="State Name"
-            value={form.stateName}
-            onChange={(e) => setForm({ ...form, stateName: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="State Code"
-            value={form.stateCode}
-            onChange={(e) => setForm({ ...form, stateCode: e.target.value })}
-          />
+    <div className="card">
+      <h3 className="text-lg font-semibold mb-3">Company Details</h3>
+      <form onSubmit={submit} className="grid grid-cols-2 gap-3">
+        <input
+          className="input"
+          placeholder="Company name"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+        />
+        <input
+          className="input"
+          placeholder="Contact"
+          value={form.contact}
+          onChange={(e) => setForm({ ...form, contact: e.target.value })}
+        />
+        <input
+          className="input col-span-2"
+          placeholder="Address"
+          value={form.address}
+          onChange={(e) => setForm({ ...form, address: e.target.value })}
+        />
+        <input
+          className="input"
+          placeholder="GST Number"
+          value={form.gstNumber}
+          onChange={(e) => setForm({ ...form, gstNumber: e.target.value })}
+        />
+        <input
+          className="input"
+          placeholder="PAN Number"
+          value={form.panNumber}
+          onChange={(e) => setForm({ ...form, panNumber: e.target.value })}
+        />
+        <input
+          className="input"
+          placeholder="State Name"
+          value={form.stateName}
+          onChange={(e) => setForm({ ...form, stateName: e.target.value })}
+        />
+        <input
+          className="input"
+          placeholder="State Code"
+          value={form.stateCode}
+          onChange={(e) => setForm({ ...form, stateCode: e.target.value })}
+        />
 
-          <select
-            className="input"
-            value={form.taxType}
-            onChange={(e) => setForm({ ...form, taxType: e.target.value })}
-          >
-            <option value="GST">GST</option>
-            <option value="VAT">VAT</option>
-            <option value="SalesTax">Sales Tax</option>
-          </select>
+       
 
+        <select
+          className="input"
+          value={form.taxType}
+          onChange={(e) => setForm({ ...form, taxType: e.target.value })}
+        >
+          <option value="GST">GST</option>
+          <option value="VAT">VAT</option>
+          <option value="SalesTax">Sales Tax</option>
+        </select>
+
+        
+
+        <input
+          className="input"
+          type="number"
+          step="0.01"
+          placeholder="Tax %"
+          value={form.taxPercent}
+          onChange={(e) => setForm({ ...form, taxPercent: e.target.value })}
+        />
+         <select
+          className="input"
+          value={form.currency}
+          onChange={(e) => setForm({ ...form, currency: e.target.value })}
+        >
+          <option value="INR">INR</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+        </select>
+
+        <div>
+          <label className="kv">Logo</label>
           <input
-            className="input"
-            type="number"
-            step="0.01"
-            placeholder="Tax %"
-            value={form.taxPercent}
-            onChange={(e) => setForm({ ...form, taxPercent: e.target.value })}
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleLogoChange(e.target.files?.[0] ?? null)}
           />
-          <select
-            className="input"
-            value={form.currency}
-            onChange={(e) => setForm({ ...form, currency: e.target.value })}
-          >
-            <option value="INR">INR</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-          </select>
+          {logoPreview && (
+            <img src={logoPreview} alt="logo" className="h-16 mt-2" />
+          )}
+        </div>
+        <div />
 
-          <div>
-            <label className="kv">Logo</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleLogoChange(e.target.files?.[0] ?? null)}
-            />
-            {logoPreview && (
-              <div className="h-16 mt-2 relative w-32">
-                <Image src={logoPreview} alt="logo" fill className="object-contain" />
-              </div>
-            )}
-          </div>
-          <div />
-
-          <div className="col-span-2 flex justify-end">
-            <button className="btn">Save Settings</button>
-          </div>
-        </form>
-      </div>
-      <QuotationCategories />
+        <div className="col-span-2 flex justify-end">
+          <button className="btn">Save Settings</button>
+        </div>
+      </form> 
+    </div>
+    <QuotationCategories />
       <PaymentLedgers />
     </>
   );

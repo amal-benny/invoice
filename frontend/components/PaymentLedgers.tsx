@@ -25,48 +25,31 @@ export default function PaymentLedgers() {
   // compute user-specific key and load deleted ids
   const computedUserKey = (() => {
     try {
-      const u =
-        typeof window !== "undefined" ? localStorage.getItem("user") : null;
-      const parsed = u ? JSON.parse(u) : null;
+      const u = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+      const parsed: { id?: number } | null = u ? JSON.parse(u) : null;
       return parsed?.id ? `pl_deleted_${parsed.id}` : "pl_deleted_global";
     } catch {
       return "pl_deleted_global";
     }
   })();
 
-//   const initialDeletedIds = (() => {
-//     try {
-//       const raw = localStorage.getItem(computedUserKey);
-//       const parsed = raw ? JSON.parse(raw) : [];
-//       if (Array.isArray(parsed))
-//         return parsed
-//           .map((x: any) => Number(x))
-//           .filter((n) => !Number.isNaN(n));
-//       return [];
-//     } catch {
-//       return [];
-//     }
-//   })();
-
-const initialDeletedIds = (() => {
-  try {
-    const raw = localStorage.getItem(computedUserKey);
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed))
-      return parsed
-        .map((x: unknown) => typeof x === "number" ? x : Number(x))
-        .filter((n) => !Number.isNaN(n));
-    return [];
-  } catch {
-    return [];
-  }
-})();
+  const initialDeletedIds = (() => {
+    try {
+      const raw = localStorage.getItem(computedUserKey);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((x) => Number(x))
+          .filter((n) => !Number.isNaN(n));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  })();
 
   const [deletedIds, setDeletedIds] = useState<number[]>(initialDeletedIds);
-  const [lastDeleted, setLastDeleted] = useState<{
-    id: number;
-    name: string;
-  } | null>(null);
+  const [lastDeleted, setLastDeleted] = useState<{ id: number; name: string } | null>(null);
   const undoTimerRef = useRef<number | null>(null);
 
   function persistDeletedIds(next: number[]) {
@@ -77,51 +60,28 @@ const initialDeletedIds = (() => {
     }
   }
 
-//   useEffect(() => {
-//     let mounted = true;
-//     setLoading(true);
-//     (async () => {
-//       try {
-//         const data = await authFetch("/api/payment-ledgers");
-//         const rawItems: Ledger[] = Array.isArray(data) ? data : [];
-//         if (!mounted) return;
-//         setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
-//       } catch (err) {
-//         console.error("Failed to load payment ledgers", err);
-//       } finally {
-//         if (mounted) setLoading(false);
-//       }
-//     })();
-//     return () => {
-//       mounted = false;
-//       if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
-//     };
-//   }, []);
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    (async () => {
+      try {
+        const data = await authFetch("/api/payment-ledgers");
+        const rawItems: Ledger[] = Array.isArray(data) ? data : [];
+        if (!mounted) return;
+        setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
+      } catch (err) {
+        console.error("Failed to load payment ledgers", err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+    };
+  }, [deletedIds]);
 
-// ...existing code...
-useEffect(() => {
-  let mounted = true;
-  setLoading(true);
-  (async () => {
-    try {
-      const data = await authFetch("/api/payment-ledgers");
-      const rawItems: Ledger[] = Array.isArray(data) ? data : [];
-      if (!mounted) return;
-      setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
-    } catch (err) {
-      console.error("Failed to load payment ledgers", err);
-    } finally {
-      if (mounted) setLoading(false);
-    }
-  })();
-  return () => {
-    mounted = false;
-    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
-  };
-}, [deletedIds]);
-// ...existing code...
-
-  function filtered() {
+  function filtered(): Ledger[] {
     const q = search.trim().toLowerCase();
     const visible = items.filter((it) => !deletedIds.includes(it.id));
     if (!q) return visible;
@@ -133,11 +93,11 @@ useEffect(() => {
     if (!createValue.trim()) return alert("Category is required");
     setSaving(true);
     try {
-      const created = await authFetch("/api/payment-ledgers", {
+      const created = (await authFetch("/api/payment-ledgers", {
         method: "POST",
         body: JSON.stringify({ category: createValue.trim() }),
         headers: { "Content-Type": "application/json" },
-      });
+      })) as Ledger;
 
       if (created?.id && deletedIds.includes(created.id)) {
         const next = deletedIds.filter((x) => x !== created.id);
@@ -169,11 +129,11 @@ useEffect(() => {
     if (!editValue.trim()) return alert("Category is required");
     setSaving(true);
     try {
-      const updated = await authFetch(`/api/payment-ledgers/${id}`, {
+      const updated = (await authFetch(`/api/payment-ledgers/${id}`, {
         method: "PUT",
         body: JSON.stringify({ category: editValue.trim() }),
         headers: { "Content-Type": "application/json" },
-      });
+      })) as Ledger;
       setItems((s) => s.map((it) => (it.id === id ? updated : it)));
       setEditingId(null);
     } catch (err) {
@@ -208,7 +168,7 @@ useEffect(() => {
 
     (async () => {
       try {
-        const single = await authFetch(`/api/payment-ledgers/${id}`);
+        const single = (await authFetch(`/api/payment-ledgers/${id}`)) as Ledger;
         if (single && single.id) {
           setItems((s) => [single, ...s]);
         }

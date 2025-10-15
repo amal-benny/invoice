@@ -50,10 +50,10 @@ export default function QuotationCategories() {
   const initialDeletedIds = (() => {
     try {
       const raw = localStorage.getItem(computedUserKey);
-      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
       if (Array.isArray(parsed))
         return parsed
-          .map((x: unknown) => Number(x))
+          .map((x) => Number(x))
           .filter((n) => !Number.isNaN(n));
       return [];
     } catch {
@@ -95,7 +95,7 @@ export default function QuotationCategories() {
       mounted = false;
       if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
     };
-  }, [deletedIds]);
+  }, []);
 
   function filtered() {
     const q = search.trim().toLowerCase();

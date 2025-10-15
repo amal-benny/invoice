@@ -2,41 +2,33 @@
 "use client";
 import { useState } from "react";
 import { authFetch } from "../lib/api";
+import type { Invoicepay } from "@/src/types/invoice";
 
-type Invoice = {
-  id: number;
-  invoiceNumber?: string;
-  currency?: string;
-  total?: number;
-  advancePaid?: number;
-  status?: string;
-  payments?: Payment[];
-};
+type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card" | "Other";
 
-type Payment = {
-  id: number;
-  amount: number;
-  date?: string;
-  method?: string;
-  reference?: string;
-  note?: string;
-};
+type WindowMethodType = "UPI" | "CASH" | "BANK" | "CARD";
+
+declare global {
+  interface Window {
+    updateDashboardIncome?: (amount: number, method: WindowMethodType) => void;
+  }
+}
 
 export default function PaymentModal({
   invoice,
   onClose,
   onSuccess,
 }: {
-  invoice: Invoice;
+  invoice: Invoicepay;
   onClose: () => void;
-  onSuccess: (updatedInvoice: Invoice) => void;
+  onSuccess: (updatedInvoice: Invoicepay) => void;
 }) {
   const existingAdvance = Number(invoice?.advancePaid || 0);
   const total = Number(invoice?.total || 0);
   const remaining = Math.max(0, total - existingAdvance);
 
   const [amount, setAmount] = useState<number>(remaining || 0);
-  const [method, setMethod] = useState<string>("Cash");
+  const [method, setMethod] = useState<MethodType>("Cash");
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState<string>("");
   const [reference, setReference] = useState<string>("");
@@ -63,7 +55,7 @@ export default function PaymentModal({
       const payload: {
         invoiceId: number;
         amount: number;
-        method: string;
+        method: MethodType;
         date: string;
         note: string;
         reference?: string;
@@ -74,50 +66,49 @@ export default function PaymentModal({
         date,
         note,
       };
+
       if (reference) payload.reference = reference;
 
-      const resp = await authFetch("/api/payments", {
+      const resp = (await authFetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
+      })) as { invoice?: Invoicepay } | Invoicepay;
 
-      const updatedInvoice: Invoice = resp?.invoice ?? resp;
+      // Prefer backend-returned invoice
+      const updatedInvoice: Invoicepay =
+        "invoice" in resp && resp.invoice ? resp.invoice : (resp as Invoicepay);
 
-      // Ensure numbers and fallback status
-      if (updatedInvoice) {
-        updatedInvoice.advancePaid = Number(updatedInvoice.advancePaid ?? 0);
-        updatedInvoice.total = Number(updatedInvoice.total ?? 0);
+      // Ensure numbers
+      updatedInvoice.advancePaid = Number(updatedInvoice.advancePaid ?? 0);
+      updatedInvoice.total = Number(updatedInvoice.total ?? 0);
 
-        if (!updatedInvoice.status) {
-          if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
-          else if ((updatedInvoice.advancePaid || 0) <= 0) updatedInvoice.status = "PENDING";
-          else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total) updatedInvoice.status = "PAID";
-          else updatedInvoice.status = "PARTIAL";
-        }
+      // Compute status fallback if missing
+      if (!updatedInvoice.status) {
+        if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
+        else if ((updatedInvoice.advancePaid || 0) <= 0) updatedInvoice.status = "PENDING";
+        else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total) updatedInvoice.status = "PAID";
+        else updatedInvoice.status = "PARTIAL";
       }
 
       onSuccess(updatedInvoice);
       onClose();
 
-      const amountPaid = amount;
-      const methodType =
-        method === "Cash"
-          ? "CASH"
-          : method === "Bank Transfer"
-          ? "BANK"
-          : method === "Card"
-          ? "CARD"
-          : method === "UPI"
-          ? "UPI"
-          : "CASH"; // fallback
+       const methodMap: Record<MethodType, WindowMethodType> = {
+        Cash: "CASH",
+        UPI: "UPI",
+        "Bank Transfer": "BANK",
+        Card: "CARD",
+        Other: "CASH", // fallback
+      };
+
+      const windowMethod = methodMap[method];
 
       if (window.updateDashboardIncome) {
-        window.updateDashboardIncome(amountPaid, methodType);
+        window.updateDashboardIncome(amount, windowMethod);
       }
-    } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message);
-      else setError("Payment failed");
+    } catch (err) {
+      setError("Payment failed"+err);
     } finally {
       setLoading(false);
     }
@@ -162,12 +153,21 @@ export default function PaymentModal({
 
             <div>
               <label className="kv">Date</label>
-              <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input
+                className="input"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
             </div>
 
             <div>
               <label className="kv">Payment Method</label>
-              <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+              <select
+                className="input"
+                value={method}
+                onChange={(e) => setMethod(e.target.value as MethodType)}
+              >
                 <option>Cash</option>
                 <option>UPI</option>
                 <option>Bank Transfer</option>
@@ -178,21 +178,39 @@ export default function PaymentModal({
 
             <div>
               <label className="kv">Reference (optional)</label>
-              <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+              <input
+                className="input"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+              />
             </div>
 
             <div>
               <label className="kv">Note</label>
-              <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+              <textarea
+                className="input"
+                rows={2}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
             </div>
 
             {error && <div className="text-sm text-red-600">{error}</div>}
 
             <div className="flex gap-2 mt-3">
-              <button type="button" className="px-4 py-2 border rounded" onClick={onClose} disabled={loading}>
+              <button
+                type="button"
+                className="px-4 py-2 border rounded"
+                onClick={onClose}
+                disabled={loading}
+              >
                 Cancel
               </button>
-              <button type="submit" className="btn px-4 py-2" disabled={!canSubmit || loading}>
+              <button
+                type="submit"
+                className="btn px-4 py-2"
+                disabled={!canSubmit || loading}
+              >
                 {loading ? "Processing..." : "Save Payment"}
               </button>
             </div>

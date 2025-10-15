@@ -3,56 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import { authFetch } from "../lib/api";
 import html2pdf from "html2pdf.js";
 import InvoiceForm from "./InvoiceForm";
-import Image from "next/image";
-
-// ---------------- Types ----------------
-
-type InvoiceItem = {
-  description: string;
-  hsn?: string;
-  quantity: number;
-  price: number;
-};
-
-type Customer = {
-  name?: string;
-  company?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  panNumber?: string;
-  gstNumber?: string;
-  stateName?:string;
-  stateCode?:string;
-};
-
-type Company = {
-  name?: string;
-  address?: string;
-  contact?: string;
-  defaultNote?: string;
-  [key: string]: string | undefined; // optional extra fields
-};
-
-type Invoice = {
-  id: number;
-  invoiceNumber?: string;
-  date?: string;
-  dueDate?: string;
-  type?: "QUOTE" | "INVOICE";
-  currency?: string;
-  subtotal?: number;
-  totalGST?: number;
-  totalDiscount?: number;
-  advancePaid?: number;
-  total?: number;
-  note?: string;
-  items?: InvoiceItem[];
-  customer?: Customer;
-  company?: Company;
-};
-
-// ---------------- Hook ----------------
+import type { Invoice } from "../src/types/invoice";
 
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -71,26 +22,48 @@ function useTheme() {
   return { theme, setTheme };
 }
 
-// ---------------- Props ----------------
+/* ---------- Types ---------- */
 
-interface InlineInvoiceViewProps {
-  invoiceId?: number | string;
-  companyLogo?: string;
-  companyDetails?: Company;
-  onBack?: () => void;
-}
+type InvoiceItem = {
+  description: string;
+  quantity: number;
+  price: number;
+  gstPercent?: number | null;
+  discount?: number | null;
+  category?: string | null;
+  advance?: number | null;
+  remark?: string | null;
+  hsn?: string | null;
+};
 
-// ---------------- Component ----------------
+
+
+type CompanyDetails = {
+  name?: string;
+  address?: string;
+  contact?: string;
+  defaultNote?: string;
+  [key: string]: unknown;
+};
+
+
+
+/* --------------------------- */
 
 export default function InlineInvoiceView({
   invoiceId,
   companyLogo,
   companyDetails,
   onBack,
-}: InlineInvoiceViewProps) {
+}: {
+  invoiceId?: number | string | undefined;
+  companyLogo?: string;
+  companyDetails?: CompanyDetails;
+  onBack?: () => void;
+}) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const { theme, setTheme } = useTheme();
-  const company = invoice?.company || companyDetails || {};
+  const company = (invoice?.company as CompanyDetails) || companyDetails || {};
   const componentRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
 
@@ -98,41 +71,13 @@ export default function InlineInvoiceView({
     if (!invoiceId) return;
     (async () => {
       try {
-        const data: Invoice = await authFetch(`/api/invoices/${invoiceId}`);
+        const data = (await authFetch(`/api/invoices/${invoiceId}`)) as Invoice;
         setInvoice(data);
       } catch {
         setInvoice(null);
       }
     })();
-  }, [invoiceId])
-
-    const mapToInvoicePayload = (inv: Invoice): import("./InvoiceForm").InvoicePayload => ({
-    // ensure required fields are present and non-undefined
-    id: inv.id,
-    // invoiceNumber: inv.invoiceNumber ?? "",
-    // InvoicePayload requires `date: string`
-    date: inv.date ?? new Date().toISOString().slice(0, 10),
-    dueDate: inv.dueDate ?? undefined,
-    // InvoicePayload requires type to be "QUOTE" | "INVOICE"
-    type: (inv.type === "QUOTE" ? "QUOTE" : "INVOICE"),
-    currency: inv.currency ?? "INR",
-    subtotal: inv.subtotal ?? 0,
-    totalGST: inv.totalGST ?? 0,
-    totalDiscount: inv.totalDiscount ?? 0,
-    advancePaid: inv.advancePaid ?? 0,
-    total: inv.total ?? 0,
-    note: inv.note ?? "",
-    items: inv.items ?? [],
-    customerName: inv.customer?.name ?? "",
-    customerCompany: inv.customer?.company ?? "",
-    customerEmail: inv.customer?.email ?? "",
-    customerPhone: inv.customer?.phone ?? "",
-    customerPanNumber: inv.customer?.panNumber ?? "",
-    customerGstNumber: inv.customer?.gstNumber ?? "",
-    customerAddress: inv.customer?.address ?? "",
-    customerStateName: inv.customer?.stateName ?? "",
-    customerStateCode: inv.customer?.stateCode ?? "",
-  });
+  }, [invoiceId]);
 
   const handlePrint = (pageSize: "A4" | "A5" = "A4") => {
     if (!componentRef.current) return;
@@ -372,42 +317,10 @@ export default function InlineInvoiceView({
         >
           Cancel Edit
         </button>
-
         <InvoiceForm
-          // pass a fully-populated InvoicePayload (no undefined required fields)
-          initialInvoice={mapToInvoicePayload(invoice)}
-          onCreated={(updatedInvoice) => {
-            // map InvoicePayload back to your local Invoice shape
-            const mapped: Invoice = {
-              id: updatedInvoice.id ?? invoice.id, // keep id if provided
-              // invoiceNumber: updatedInvoice.invoiceNumber || invoice.invoiceNumber,
-              date: updatedInvoice.date,
-              dueDate: updatedInvoice.dueDate,
-              type: updatedInvoice.type,
-              currency: updatedInvoice.currency,
-              subtotal: updatedInvoice.subtotal,
-              totalGST: updatedInvoice.totalGST,
-              totalDiscount: updatedInvoice.totalDiscount,
-              advancePaid: updatedInvoice.advancePaid,
-              total: updatedInvoice.total,
-              note: updatedInvoice.note,
-              items: updatedInvoice.items as InvoiceItem[],
-              customer: {
-                name: updatedInvoice.customerName ,
-                company: updatedInvoice.customerCompany ,
-                email: updatedInvoice.customerEmail ,
-                phone: updatedInvoice.customerPhone ,
-                panNumber:updatedInvoice.customerPanNumber || undefined,
-                gstNumber:updatedInvoice.customerGstNumber || undefined,
-                stateName:updatedInvoice.customerStateName || undefined,
-                stateCode:updatedInvoice.customerStateCode || undefined,
-                address: updatedInvoice.customerAddress || undefined,
-                
-              },
-              // keep any existing company object (or companyDetails) if present
-              company: invoice.company ?? companyDetails ?? undefined,
-            };
-            setInvoice(mapped);
+          initialInvoice={invoice}
+          onCreated={(updatedInvoice: Invoice) => {
+            setInvoice(updatedInvoice); // update view after save
             setEditing(false);
           }}
         />
@@ -440,7 +353,9 @@ export default function InlineInvoiceView({
                 await authFetch(`/api/invoices/${invoice.id}/convert`, {
                   method: "POST",
                 });
-                const d = await authFetch(`/api/invoices/${invoice.id}`);
+                const d = (await authFetch(
+                  `/api/invoices/${invoice.id}`
+                )) as Invoice;
                 setInvoice(d);
               }}
               className="px-4 py-2 rounded-md bg-primary text-white font-semibold shadow hover:opacity-95 transition"
@@ -492,17 +407,14 @@ export default function InlineInvoiceView({
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-6">
             {companyLogo ? (
-              <Image
+              <img
                 src={companyLogo}
                 alt="Company logo"
-                width={96}
-                height={96}
                 className="h-24 w-auto object-contain"
-                priority
               />
             ) : (
               <div className="h-16 w-16 rounded-md bg-neutral-100 dark:bg-neutral-700 flex items-center justify-center text-sm font-semibold">
-                {company?.name ? company.name.charAt(0) : "C"}
+                {company?.name ? String(company.name).charAt(0) : "C"}
               </div>
             )}
             <div className="leading-tight">

@@ -39,7 +39,8 @@ async function main() {
       address: "123 Business Rd",
       contact: "+91 9876543210",
       gstNumber: "22AAAAA0000A1Z5",
-      currency: "INR"
+      currency: "INR",
+      
     }
   });
 

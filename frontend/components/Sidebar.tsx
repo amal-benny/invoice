@@ -1,6 +1,7 @@
 
 
 "use client";
+
 import {
   LayoutDashboard,
   FilePlus,
@@ -11,19 +12,9 @@ import {
   KeyRound,
   DollarSign
 } from "lucide-react";
-import type { TabKey } from "../src/types/ui"
+import type { TabKey } from "@/src/types/invoice";
 
-// type TabKey =
-//   | "dashboard"
-//   | "invoice"
-//   | "customers"
-//   | "settings"
-//   | "reports"
-//   | "register"
-//   | "setpassword"
-//   | "payments"; // ✅ added
 
-  import Image from "next/image";
 
 
 export default function Sidebar({
@@ -57,33 +48,12 @@ export default function Sidebar({
       style={{ borderColor: "rgba(0,0,0,0.06)" }}
     >
       {/* Logo + Company */}
-      {/* <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
         {logoUrl ? (
           <img
             src={logoUrl}
             alt="logo"
             className="h-12 w-12 rounded-md object-cover"
-          />
-        ) : (
-          <div className="h-12 w-12 rounded-md bg-primary text-white flex items-center justify-center">
-            IM
-          </div>
-        )}
-        <div>
-          <div className="font-semibold">{companyName || "Company"}</div>
-          <div className="kv">Invoice Maker</div>
-        </div>
-      </div> */}
-
-      <div className="flex items-center gap-3">
-        {logoUrl ? (
-          <Image
-            src={logoUrl}
-            alt="logo"
-            width={48}
-            height={48}
-            className="h-12 w-12 rounded-md object-cover"
-            priority
           />
         ) : (
           <div className="h-12 w-12 rounded-md bg-primary text-white flex items-center justify-center">

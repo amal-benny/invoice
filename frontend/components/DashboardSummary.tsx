@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -10,16 +9,16 @@ type SummaryRow = {
   closing: number;
 };
 
+type MethodType = "CASH" | "BANK";
+
+// Extend window interface globally
 declare global {
   interface Window {
     updateDashboardIncome?: (amount: number, method: "CASH" | "BANK" | "CARD" | "UPI") => void;
   }
 }
 
-type MethodType = "CASH" | "BANK";
-
 export default function DashboardSummary() {
-  // --- Local state ---
   const [cash, setCash] = useState<SummaryRow>({ starting: 0, income: 0, closing: 0 });
   const [bank, setBank] = useState<SummaryRow>({ starting: 0, income: 0, closing: 0 });
 
@@ -29,7 +28,6 @@ export default function DashboardSummary() {
 
   const LS_KEY = "app_starting_balances_v1";
 
-  // --- Load starting balances from localStorage ---
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -53,7 +51,6 @@ export default function DashboardSummary() {
     }
   }, []);
 
-  // --- Save starting balances ---
   async function saveStartingBalance(method: MethodType, amount: number) {
     setBusy(true);
     try {
@@ -96,7 +93,6 @@ export default function DashboardSummary() {
     setStartAmount("");
   };
 
-  // --- Real-time hook for new payments ---
   const addPaymentToSummary = useCallback(
     (amount: number, method: "CASH" | "BANK" | "CARD" | "UPI") => {
       if (amount <= 0) return;
@@ -118,10 +114,10 @@ export default function DashboardSummary() {
     []
   );
 
-  // Expose globally so InvoiceForm can call it
+  // Expose globally with proper type
   useEffect(() => {
-  window.updateDashboardIncome = addPaymentToSummary;
-}, [addPaymentToSummary]);
+    window.updateDashboardIncome = addPaymentToSummary;
+  }, [addPaymentToSummary]);
 
   return (
     <div className="space-y-6">

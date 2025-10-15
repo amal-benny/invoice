@@ -2,58 +2,52 @@
 import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Eye, Edit, Trash } from "lucide-react";
-import PaymentModal from "./PaymentModal";
+import PaymentModal from "../components/PaymentModal";
+import type { Invoice } from "../src/types/invoice";
+import type { Invoicepay } from "@/src/types/invoice";
 
-export type Payment = {
-  id: number;
+
+
+
+type Payment = {
+  id?: number;
   amount: number;
   date?: string;
+  method?: string;
+  note?: string;
 };
 
-export type Customer = {
-  id?: number;
-  name?: string;
-};
 
-export type Invoice = {
-  id: number;
-  invoiceNumber?: string;
-  type?: "QUOTE" | "INVOICE";
-  customer?: Customer;
-  date?: string;
-  currency?: string;
-  total?: number;
-  status?: string;
-  advancePaid?: number;
-  payments?: Payment[];
-};
 
-interface Props {
-  invoices: Invoice[];
-  onConvert?: (id: number) => void;
-  onView?: (id: number) => void;
-  onEdit?: (id: number) => void;
-  onDelete?: (id: number) => void;
-  onPaymentSuccess?: (updatedInvoice: Invoice) => void;
-}
+
 
 export default function InvoiceTable({
   invoices,
   onConvert,
   onView,
   onEdit,
+  onDelete,
   onPaymentSuccess,
-}: Props) {
+}: {
+  invoices: Invoice[];
+  onConvert?: (id: number) => void;
+  onView?: (id: number) => void;
+  onEdit?: (id: number) => void;
+  onDelete?: (id: number) => void;
+  onPaymentSuccess?: (updatedInvoice: Invoice) => void;
+}) {
   const [localInvoices, setLocalInvoices] = useState<Invoice[]>(invoices || []);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
   const [deletedIds, setDeletedIds] = useState<number[]>([]);
   const [searchText, setSearchText] = useState("");
 
+  // Load deleted IDs from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("deletedInvoices");
     if (saved) setDeletedIds(JSON.parse(saved));
   }, []);
 
+  // Keep localInvoices in sync when invoices prop changes
   useEffect(() => {
     setLocalInvoices(invoices || []);
   }, [invoices]);
@@ -61,34 +55,42 @@ export default function InvoiceTable({
   async function convertToInvoice(id: number) {
     try {
       await authFetch(`/api/invoices/${id}/convert`, { method: "POST" });
-      onConvert?.(id);
-    } catch {
-      alert("Failed to convert quotation.");
+      if (onConvert) onConvert(id);
+    } catch (err) {
+      alert("Failed to convert quotation."+err);
     }
   }
 
-  const paidAmount = (inv: Invoice) => {
-    if (typeof inv.advancePaid === "number") return inv.advancePaid;
-    if (Array.isArray(inv.payments)) {
-      return inv.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  function paidAmount(inv: Invoice) {
+    const adv = Number(inv?.advancePaid ?? NaN);
+    if (!Number.isNaN(adv)) return adv;
+    if (Array.isArray(inv?.payments)) {
+      return inv.payments!.reduce(
+        (s: number, p: Payment) => s + Number(p.amount || 0),
+        0
+      );
     }
     return 0;
-  };
+  }
 
-  const computeStatus = (inv: Invoice) => {
-    if (inv.status === "OVERDUE") return "OVERDUE";
-    const total = inv.total || 0;
+  function computeStatus(inv: Invoice) {
+    if (inv?.status === "OVERDUE") return "OVERDUE";
+    const total = Number(inv?.total || 0);
     const paid = paidAmount(inv);
+
     if (total <= 0) return "PAID";
     if (paid <= 0) return "PENDING";
     if (paid >= total) return "PAID";
     return "PARTIAL";
-  };
+  }
 
-  const typeColor = (type: "QUOTE" | "INVOICE") =>
-    type === "QUOTE" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800";
+  function typeColor(type: "QUOTE" | "INVOICE") {
+    return type === "QUOTE"
+      ? "bg-red-100 text-red-800"
+      : "bg-green-100 text-green-800";
+  }
 
-  const statusColor = (status: string) => {
+  function statusColor(status: string) {
     switch (status) {
       case "PAID":
         return "bg-green-100 text-green-800";
@@ -96,17 +98,22 @@ export default function InvoiceTable({
         return "bg-yellow-100 text-yellow-800";
       case "OVERDUE":
         return "bg-red-100 text-red-800";
+      case "PENDING":
       default:
         return "bg-gray-100 text-gray-800";
     }
-  };
+  }
 
-  const handlePaymentSuccess = (updatedInvoice: Invoice) => {
-    onPaymentSuccess?.(updatedInvoice);
+  function handlePaymentSuccess(updatedInvoice: Invoice) {
+    if (onPaymentSuccess) {
+      try {
+        onPaymentSuccess(updatedInvoice);
+      } catch {}
+    }
     setLocalInvoices((prev) =>
       prev.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv))
     );
-  };
+  }
 
   const handleDelete = (id: number) => {
     setDeletedIds((prev) => {
@@ -114,14 +121,16 @@ export default function InvoiceTable({
       localStorage.setItem("deletedInvoices", JSON.stringify(updated));
       return updated;
     });
+    if (onDelete) onDelete(id);
   };
 
+  // Filter invoices based on searchText
   const filteredInvoices = localInvoices.filter((inv) => {
     const text = searchText.toLowerCase();
     const dateStr = inv.date ? new Date(inv.date).toLocaleDateString() : "";
     return (
-      inv.invoiceNumber?.toLowerCase().includes(text) ||
-      inv.customer?.name?.toLowerCase().includes(text) ||
+      (inv.invoiceNumber || "").toLowerCase().includes(text) ||
+      (inv.customer?.name || "").toLowerCase().includes(text) ||
       dateStr.includes(text)
     );
   });
@@ -131,8 +140,10 @@ export default function InvoiceTable({
       <div className="card mt-6">
         <h3 className="text-lg font-semibold mb-3">Invoices / Quotations</h3>
 
+        {/* Search field */}
         <div className="mb-4 flex flex-col md:flex-row md:items-center gap-2">
           <div className="relative w-full md:w-1/3">
+            {/* Search icon */}
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -147,6 +158,8 @@ export default function InvoiceTable({
                 />
               </svg>
             </span>
+
+            {/* Input */}
             <input
               type="text"
               placeholder="Search by Number, Customer or Date"
@@ -156,9 +169,10 @@ export default function InvoiceTable({
             />
           </div>
 
+          {/* Search Button */}
           <button
-            onClick={() => setSearchText(searchText.trim())}
-            className="bg-purple-600 text-white font-semibold px-4 py-2 rounded-full shadow-md transition-all"
+            onClick={() => setSearchText(searchText.trim())} // triggers filtering
+            className="bg-purple-600  text-white font-semibold px-4 py-2 rounded-full shadow-md transition-all"
             style={{ backgroundColor: "rgb(128, 41, 73)" }}
           >
             Search
@@ -195,22 +209,30 @@ export default function InvoiceTable({
                   return (
                     <tr
                       key={inv.id}
-                      className={`hover:bg-gray-50 ${isDeleted ? "opacity-50" : ""}`}
+                      className={`hover:bg-gray-50 ${
+                        isDeleted ? "opacity-50" : ""
+                      }`}
                     >
                       <td className="px-3 py-2 border-b">{idx + 1}</td>
-                      <td className="px-3 py-2 border-b">{inv.invoiceNumber || "-"}</td>
+                      <td className="px-3 py-2 border-b">
+                        {inv.invoiceNumber || "-"}
+                      </td>
                       <td className="px-3 py-2 border-b">
                         <span
                           className={`px-3 py-1 font-semibold text-center ${typeColor(
-                            inv.type ?? "INVOICE"
+                            inv.type as "QUOTE" | "INVOICE"
                           )} rounded-full inline-block`}
                         >
-                          {inv.type ?? "INVOICE"}
+                          {inv.type}
                         </span>
                       </td>
-                      <td className="px-3 py-2 border-b">{inv.customer?.name || "-"}</td>
                       <td className="px-3 py-2 border-b">
-                        {inv.date ? new Date(inv.date).toLocaleDateString() : "-"}
+                        {inv.customer?.name || "-"}
+                      </td>
+                      <td className="px-3 py-2 border-b">
+                        {inv.date
+                          ? new Date(inv.date).toLocaleDateString()
+                          : "-"}
                       </td>
                       <td className="px-3 py-2 border-b">
                         {inv.currency} {Number(inv.total || 0).toFixed(2)}
@@ -288,9 +310,12 @@ export default function InvoiceTable({
 
       {payInvoice && (
         <PaymentModal
-          invoice={payInvoice}
+          invoice={payInvoice  as Invoicepay} // ✅ correct
           onClose={() => setPayInvoice(null)}
-          onSuccess={handlePaymentSuccess}
+          onSuccess={(updatedInvoice: Invoice) => {
+            setPayInvoice(null);
+            handlePaymentSuccess(updatedInvoice);
+          }}
         />
       )}
     </>

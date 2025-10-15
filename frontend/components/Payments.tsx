@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Wallet, CreditCard, TrendingUp, DollarSign } from "lucide-react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import type { Settings } from "@/src/types/invoice";
 
 type TransactionType = "INCOME" | "EXPENSE";
 
@@ -14,7 +15,7 @@ interface Transaction {
   amount: number;
   date: string;
   description?: string;
-  method: string;
+  method: "Cash" | "Bank";
   reference?: string;
   closingBalance?: number;
 }
@@ -31,17 +32,26 @@ interface Ledger {
   category: string;
 }
 
-interface Settings {
-  logoPreview?: string;
-  name?: string;
-  address?: string;
-  contact?: string;
-  email?: string;
-  stateName?: string;
-  gstNumber?: string;
+interface SearchFilters {
+  type: "" | TransactionType;
+  category: string;
+  date: string;
 }
 
-// --- Helper: number to words ---
+interface Stats {
+  cashStarting: number;
+  cashIncome: number;
+  cashExpense: number;
+  cashNet: number;
+  cashClosing: number;
+  bankStarting: number;
+  bankIncome: number;
+  bankExpense: number;
+  bankNet: number;
+  bankClosing: number;
+}
+
+// Helper to convert number to words
 function numberToWords(num: number): string {
   if (!num && num !== 0) return "";
   num = Math.floor(num);
@@ -67,15 +77,45 @@ function numberToWords(num: number): string {
     "Eighteen",
     "Nineteen",
   ];
-  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const b = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
 
   function inWords(n: number): string {
     if (n < 20) return a[n];
     if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
-    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + inWords(n % 100) : "");
-    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
-    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
-    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+    if (n < 1000)
+      return (
+        a[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? " " + inWords(n % 100) : "")
+      );
+    if (n < 100000)
+      return (
+        inWords(Math.floor(n / 1000)) +
+        " Thousand" +
+        (n % 1000 ? " " + inWords(n % 1000) : "")
+      );
+    if (n < 10000000)
+      return (
+        inWords(Math.floor(n / 100000)) +
+        " Lakh" +
+        (n % 100000 ? " " + inWords(n % 100000) : "")
+      );
+    return (
+      inWords(Math.floor(n / 10000000)) +
+      " Crore" +
+      (n % 10000000 ? " " + inWords(n % 10000000) : "")
+    );
   }
 
   return inWords(num) || "Zero";
@@ -100,8 +140,13 @@ export default function Payments() {
   });
   const [useOtherCategory, setUseOtherCategory] = useState(false);
 
-  const [search, setSearch] = useState({ type: "", category: "", date: "" });
-  const [stats, setStats] = useState({
+  const [search, setSearch] = useState<SearchFilters>({
+    type: "",
+    category: "",
+    date: "",
+  });
+
+  const [stats, setStats] = useState<Stats>({
     cashStarting: 0,
     cashIncome: 0,
     cashExpense: 0,
@@ -113,13 +158,32 @@ export default function Payments() {
     bankNet: 0,
     bankClosing: 0,
   });
-  const [downloadRange, setDownloadRange] = useState<{ startDate?: string; endDate?: string }>({
-    startDate: "",
-    endDate: "",
-  });
 
-  // --- Callbacks ---
-  const loadBalances = useCallback(async () => {
+  const [downloadRange, setDownloadRange] = useState<{
+    startDate?: string;
+    endDate?: string;
+  }>({ startDate: "", endDate: "" });
+
+  useEffect(() => {
+    loadBalances();
+    loadTransactions();
+    loadLedgers();
+  }, []);
+
+  useEffect(() => {
+    calculateSummary();
+  }, [transactions, balances]);
+
+  async function loadLedgers() {
+    try {
+      const data: Ledger[] = await authFetch("/api/payment-ledgers");
+      if (Array.isArray(data)) setLedgers(data);
+    } catch (err) {
+      console.error("Failed to load ledgers", err);
+    }
+  }
+
+  async function loadBalances() {
     const data: Balance[] = await authFetch("/api/transactions/balance");
     setBalances(data);
 
@@ -131,31 +195,64 @@ export default function Payments() {
       setEditingBalance(null);
       setNewBalance(0);
     }
-  }, [newMethod]);
+  }
 
-  const loadTransactions = useCallback(async () => {
-    const query = new URLSearchParams(search).toString();
+  async function loadTransactions() {
+    const query = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(search).filter(([, v]) => v !== "")
+      ) as Record<string, string>
+    ).toString();
+
     const data: Transaction[] = await authFetch(`/api/transactions?${query}`);
     setTransactions(data);
-  }, [search]);
+  }
 
-  const loadLedgers = useCallback(async () => {
-    try {
-      const data: Ledger[] = await authFetch("/api/payment-ledgers");
-      if (Array.isArray(data)) setLedgers(data);
-    } catch (err) {
-      console.error("Failed to load ledgers", err);
+  async function addOrUpdateBalance() {
+    if (!newBalance) return;
+
+    if (editingBalance) {
+      await authFetch(`/api/transactions/balance/${editingBalance.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ amount: newBalance, method: newMethod }),
+        headers: { "Content-Type": "application/json" },
+      });
+    } else {
+      await authFetch("/api/transactions/balance", {
+        method: "POST",
+        body: JSON.stringify({ amount: newBalance, method: newMethod }),
+        headers: { "Content-Type": "application/json" },
+      });
     }
-  }, []);
 
-  // --- Effects ---
-  useEffect(() => {
+    setNewBalance(0);
+    setEditingBalance(null);
+    setNewMethod("Cash");
     loadBalances();
-    loadTransactions();
-    loadLedgers();
-  }, [loadBalances, loadTransactions, loadLedgers]);
+  }
 
-  const calculateSummary = useCallback(() => {
+  async function addTransaction() {
+    await authFetch("/api/transactions", {
+      method: "POST",
+      body: JSON.stringify(txnForm),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    setTxnForm({
+      type: "INCOME",
+      category: "",
+      amount: 0,
+      date: "",
+      description: "",
+      method: "Cash",
+      reference: "",
+    });
+    setUseOtherCategory(false);
+
+    loadTransactions();
+  }
+
+  function calculateSummary() {
     const cashStarting = balances.find((b) => b.method === "Cash")?.amount || 0;
     const bankStarting = balances.find((b) => b.method === "Bank")?.amount || 0;
 
@@ -186,60 +283,13 @@ export default function Payments() {
       bankNet: bankIncome - bankExpense,
       bankClosing: bankStarting + bankIncome - bankExpense,
     });
-  }, [balances, transactions]);
-
-  useEffect(() => {
-    calculateSummary();
-  }, [transactions, balances, calculateSummary]);
-
-  // --- Add/update balance ---
-  async function addOrUpdateBalance() {
-    if (!newBalance) return;
-
-    if (editingBalance) {
-      await authFetch(`/api/transactions/balance/${editingBalance.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ amount: newBalance, method: newMethod }),
-        headers: { "Content-Type": "application/json" },
-      });
-    } else {
-      await authFetch("/api/transactions/balance", {
-        method: "POST",
-        body: JSON.stringify({ amount: newBalance, method: newMethod }),
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    setNewBalance(0);
-    setEditingBalance(null);
-    setNewMethod("Cash");
-    await loadBalances();
   }
 
-  // --- Add transaction ---
-  async function addTransaction() {
-    await authFetch("/api/transactions", {
-      method: "POST",
-      body: JSON.stringify(txnForm),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    setTxnForm({
-      type: "INCOME",
-      category: "",
-      amount: 0,
-      date: "",
-      description: "",
-      method: "Cash",
-      reference: "",
-    });
-    setUseOtherCategory(false);
-    await loadTransactions();
-  }
-
-  // --- Download Excel ---
+  // --- downloadExcel & printRow keep same types ---
   function downloadExcel() {
-    const start = downloadRange.startDate ? new Date(downloadRange.startDate) : null;
+    const start = downloadRange.startDate
+      ? new Date(downloadRange.startDate)
+      : null;
     const end = downloadRange.endDate ? new Date(downloadRange.endDate) : null;
 
     const filtered = transactions.filter((tx) => {
@@ -264,9 +314,11 @@ export default function Payments() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Transactions");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(new Blob([buf], { type: "application/octet-stream" }), "transactions.xlsx");
+    saveAs(
+      new Blob([buf], { type: "application/octet-stream" }),
+      "transactions.xlsx"
+    );
   }
-
   function printRow(tx: Transaction) {
     // load settings (saved by SettingsForm into localStorage)
     let settings: Settings | null = null;
@@ -750,7 +802,10 @@ export default function Payments() {
                   className="input w-full"
                   value={search.type}
                   onChange={(e) =>
-                    setSearch({ ...search, type: e.target.value })
+                    setSearch({
+                      ...search,
+                      type: e.target.value as "" | TransactionType,
+                    })
                   }
                 >
                   <option value="">All Types</option>
