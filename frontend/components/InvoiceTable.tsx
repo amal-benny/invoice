@@ -11,8 +11,8 @@ export type Payment = {
 };
 
 export type Customer = {
-  id: number;
-  name: string;
+  id?: number;
+  name?: string;
 };
 
 export type Invoice = {

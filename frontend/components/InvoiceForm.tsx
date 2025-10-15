@@ -58,6 +58,10 @@ export type InvoicePayload = {
   customerEmail: string;
   customerPhone: string;
   customerAddress: string;
+  customerPanNumber?: string;      // <- added
+  customerGstNumber?: string;      // <- added
+  customerStateName?: string;      // <- added
+  customerStateCode?: string;  
   dueDate?: string;
   date: string;
   items: Item[];
@@ -160,11 +164,17 @@ export default function InvoiceForm({
   const [customerPhone, setCustomerPhone] = useState<string>(
     initialInvoice?.customerPhone || ""
   );
+  const [customerPanNumber, setCustomerPanNumber] = useState<string>(
+    initialInvoice?.customerPanNumber || ""
+  );
+  const [customerGstNumber, setCustomerGstNumber] = useState<string>(
+    initialInvoice?.customerGstNumber || ""
+  );
   const [customerStateName, setCustomerStateName] = useState<string>(
-    initialInvoice?.customerAddress ? initialInvoice.customerAddress : ""
+    initialInvoice?.customerStateName ? initialInvoice.customerAddress : ""
   );
   const [customerStateCode, setCustomerStateCode] = useState<string>(
-    initialInvoice?.customerAddress ? initialInvoice.customerAddress : ""
+    initialInvoice?.customerStateCode ? initialInvoice.customerAddress : ""
   );
   const [customerAddress, setCustomerAddress] = useState<string>(
     initialInvoice?.customerAddress || ""
@@ -320,6 +330,10 @@ export default function InvoiceForm({
       customerCompany,
       customerEmail,
       customerPhone,
+      customerPanNumber: customerPanNumber || undefined, // NEW
+      customerGstNumber: customerGstNumber || undefined, // NEW
+      customerStateName: customerStateName || undefined, // ensure included
+      customerStateCode: customerStateCode || undefined,
       customerAddress,
       dueDate: dueDate || undefined,
       date, // <-- add this line!
@@ -482,12 +496,16 @@ export default function InvoiceForm({
                         setCustomerStateName(selected.stateName || "");
                         setCustomerStateCode(selected.stateCode || "");
                         setCustomerAddress(selected.address || "");
+                        setCustomerPanNumber((selected as any).panNumber || "");
+                        setCustomerGstNumber((selected as any).gstNumber || "");
                       } else {
                         // clear if no selection
                         setCustomerName("");
                         setCustomerCompany("");
                         setCustomerEmail("");
                         setCustomerPhone("");
+                        setCustomerPanNumber("");
+                        setCustomerGstNumber("");
                         setCustomerStateName("");
                         setCustomerStateCode("");
                         setCustomerAddress("");
@@ -521,9 +539,21 @@ export default function InvoiceForm({
                   />
                   <input
                     className="input"
+                    placeholder="PAN Number"
+                    value={customerPanNumber}
+                    onChange={(e) => setCustomerPanNumber(e.target.value)}
+                  />
+                  <input
+                    className="input"
                     placeholder="Phone"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    placeholder="GSTIN"
+                    value={customerGstNumber}
+                    onChange={(e) => setCustomerGstNumber(e.target.value)}
                   />
                   <input
                     className="input"

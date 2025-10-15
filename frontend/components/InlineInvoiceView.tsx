@@ -22,6 +22,8 @@ type Customer = {
   address?: string;
   panNumber?: string;
   gstNumber?: string;
+  stateName?:string;
+  stateCode?:string;
 };
 
 type Company = {
@@ -125,7 +127,11 @@ export default function InlineInvoiceView({
     customerCompany: inv.customer?.company ?? "",
     customerEmail: inv.customer?.email ?? "",
     customerPhone: inv.customer?.phone ?? "",
+    customerPanNumber: inv.customer?.panNumber ?? "",
+    customerGstNumber: inv.customer?.gstNumber ?? "",
     customerAddress: inv.customer?.address ?? "",
+    customerStateName: inv.customer?.stateName ?? "",
+    customerStateCode: inv.customer?.stateCode ?? "",
   });
 
   const handlePrint = (pageSize: "A4" | "A5" = "A4") => {
@@ -391,7 +397,12 @@ export default function InlineInvoiceView({
                 company: updatedInvoice.customerCompany ,
                 email: updatedInvoice.customerEmail ,
                 phone: updatedInvoice.customerPhone ,
-                address: updatedInvoice.customerAddress ,
+                panNumber:updatedInvoice.customerPanNumber || undefined,
+                gstNumber:updatedInvoice.customerGstNumber || undefined,
+                stateName:updatedInvoice.customerStateName || undefined,
+                stateCode:updatedInvoice.customerStateCode || undefined,
+                address: updatedInvoice.customerAddress || undefined,
+                
               },
               // keep any existing company object (or companyDetails) if present
               company: invoice.company ?? companyDetails ?? undefined,

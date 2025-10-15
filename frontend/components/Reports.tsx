@@ -14,31 +14,62 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-type Invoice = {
+// --- TYPES ---
+
+export type InvoiceStatus = "PAID" | "UNPAID" | "PARTIAL" | "PENDING";
+
+export type Invoice = {
   id: number;
   invoiceNumber?: string;
-  status: "PAID" | "UNPAID" | "PARTIAL" | "PENDING";
+  status: InvoiceStatus;
   total?: number;
   advancePaid?: number;
   createdAt?: string;
-  date?: string; // backend used date field in some endpoints
+  date?: string;
 };
 
-type Customer = {
+export type Customer = {
   id: number;
   name?: string;
   createdAt?: string;
   invoices?: Invoice[];
 };
 
-type TransactionType = "INCOME" | "EXPENSE";
+export type TransactionType = "INCOME" | "EXPENSE";
 
-type Transaction = {
+export type Transaction = {
   id: number;
   type: TransactionType;
   amount: number;
   date: string;
 };
+
+// --- REPORT TYPES ---
+
+export type InvoiceReportItem = {
+  period: string;
+  count: number;
+};
+
+export type CustomerReportItem = {
+  period: string;
+  total: number;
+  paid: number;
+  unpaid: number;
+};
+
+export type StatusReportItem = {
+  name: InvoiceStatus;
+  value: number;
+};
+
+export type TransactionReportItem = {
+  period: string;
+  income: number;
+  expense: number;
+};
+
+// --- COMPONENT ---
 
 function formatRangeLabel(from?: string, to?: string) {
   if (!from && !to) return "All time";
@@ -53,13 +84,11 @@ export default function Reports() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // date filter states (yyyy-mm-dd)
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    // load initial data with no date filter (or you could initialize defaults)
     loadData();
   }, []);
 
@@ -93,21 +122,16 @@ export default function Reports() {
     }
   }
 
-  // helper: parse date-only strings into Date objects.
   function parseStartEnd(from?: string, to?: string) {
     if (!from && !to) return null;
     const start = from ? new Date(from + "T00:00:00") : undefined;
     let end = to ? new Date(to + "T00:00:00") : undefined;
-    if (end) {
-      // extend to end of day to include whole "to" day
-      end.setHours(23, 59, 59, 999);
-    }
+    if (end) end.setHours(23, 59, 59, 999);
     return { start, end };
   }
 
   // --- INVOICE REPORT ---
-  const invoiceReport = useMemo(() => {
-    // If user selected a custom from/to show a single 'range' bar
+  const invoiceReport = useMemo<InvoiceReportItem[]>(() => {
     if (dateFrom || dateTo) {
       const parsed = parseStartEnd(dateFrom, dateTo);
       const count = invoices.filter((inv) => {
@@ -120,7 +144,6 @@ export default function Reports() {
       return [{ period: formatRangeLabel(dateFrom, dateTo), count }];
     }
 
-    // fallback: original today/week/month behaviour
     function getDateRange(type: "today" | "week" | "month") {
       const now = new Date();
       switch (type) {
@@ -128,13 +151,14 @@ export default function Reports() {
           return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
         case "week": {
           const day = now.getDay();
-          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1);
           return [new Date(now.setDate(diff)), new Date()];
         }
         case "month":
           return [new Date(now.getFullYear(), now.getMonth(), 1), new Date()];
       }
     }
+
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
     return types.map((type) => {
       const [start, end] = getDateRange(type);
@@ -147,7 +171,7 @@ export default function Reports() {
   }, [invoices, dateFrom, dateTo]);
 
   // --- CUSTOMER REPORT ---
-  const customerReport = useMemo(() => {
+  const customerReport = useMemo<CustomerReportItem[]>(() => {
     if (dateFrom || dateTo) {
       const parsed = parseStartEnd(dateFrom, dateTo);
       const filteredCustomers = customers.filter((c) => {
@@ -179,7 +203,7 @@ export default function Reports() {
           return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
         case "week": {
           const day = now.getDay();
-          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1);
           return [new Date(now.setDate(diff)), new Date()];
         }
         case "month":
@@ -193,7 +217,6 @@ export default function Reports() {
         const d = new Date(c.createdAt ?? "");
         return d >= start && d <= end;
       });
-
       const paid = filteredCustomers.filter((c) =>
         c.invoices?.some((inv) => inv.status === "PAID")
       ).length;
@@ -209,84 +232,43 @@ export default function Reports() {
   }, [customers, dateFrom, dateTo]);
 
   // --- STATUS REPORT ---
-  const statusReport = useMemo(() => {
-    const statusTypes: Invoice["status"][] = [
-      "PAID",
-      "UNPAID",
-      "PENDING",
-      "PARTIAL",
-    ];
-    // For status we can show counts of invoices (if date range provided, those invoices are already filtered from backend but we'll double-check client-side)
-    if (dateFrom || dateTo) {
+  const statusReport = useMemo<StatusReportItem[]>(() => {
+    const statusTypes: InvoiceStatus[] = ["PAID", "UNPAID", "PENDING", "PARTIAL"];
+    const filtered = invoices.filter((inv) => {
+      if (!dateFrom && !dateTo) return true;
+      const d = new Date(inv.createdAt ?? inv.date ?? "");
       const parsed = parseStartEnd(dateFrom, dateTo);
-      const filtered = invoices.filter((inv) => {
-        const d = new Date(inv.createdAt ?? inv.date ?? "");
-        if (isNaN(d.getTime())) return false;
-        if (parsed?.start && d < parsed.start) return false;
-        if (parsed?.end && d > parsed.end) return false;
-        return true;
-      });
-      return statusTypes.map((status) => ({
-        name: status,
-        value: filtered.filter((inv) => inv.status === status).length,
-      }));
-    }
+      if (isNaN(d.getTime())) return false;
+      if (parsed?.start && d < parsed.start) return false;
+      if (parsed?.end && d > parsed.end) return false;
+      return true;
+    });
     return statusTypes.map((status) => ({
       name: status,
-      value: invoices.filter((inv) => inv.status === status).length,
+      value: filtered.filter((inv) => inv.status === status).length,
     }));
   }, [invoices, dateFrom, dateTo]);
 
   // --- TRANSACTION REPORT ---
-  const transactionReport = useMemo(() => {
-    if (dateFrom || dateTo) {
+  const transactionReport = useMemo<TransactionReportItem[]>(() => {
+    const filtered = transactions.filter((tx) => {
+      if (!dateFrom && !dateTo) return true;
+      const d = new Date(tx.date);
       const parsed = parseStartEnd(dateFrom, dateTo);
-      const filtered = transactions.filter((tx) => {
-        const d = new Date(tx.date);
-        if (isNaN(d.getTime())) return false;
-        if (parsed?.start && d < parsed.start) return false;
-        if (parsed?.end && d > parsed.end) return false;
-        return true;
-      });
-      const income = filtered
-        .filter((tx) => tx.type === "INCOME")
-        .reduce((a, t) => a + t.amount, 0);
-      const expense = filtered
-        .filter((tx) => tx.type === "EXPENSE")
-        .reduce((a, t) => a + t.amount, 0);
-      return [{ period: formatRangeLabel(dateFrom, dateTo), income, expense }];
-    }
-
-    const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
-    function getDateRange(type: "today" | "week" | "month") {
-      const now = new Date();
-      switch (type) {
-        case "today":
-          return [new Date(now.setHours(0, 0, 0, 0)), new Date()];
-        case "week": {
-          const day = now.getDay();
-          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // monday
-          return [new Date(now.setDate(diff)), new Date()];
-        }
-        case "month":
-          return [new Date(now.getFullYear(), now.getMonth(), 1), new Date()];
-      }
-    }
-
-    return types.map((type) => {
-      const [start, end] = getDateRange(type);
-      const filtered = transactions.filter((tx) => {
-        const d = new Date(tx.date);
-        return d >= start && d <= end;
-      });
-      const income = filtered
-        .filter((tx) => tx.type === "INCOME")
-        .reduce((a, t) => a + t.amount, 0);
-      const expense = filtered
-        .filter((tx) => tx.type === "EXPENSE")
-        .reduce((a, t) => a + t.amount, 0);
-      return { period: type, income, expense };
+      if (isNaN(d.getTime())) return false;
+      if (parsed?.start && d < parsed.start) return false;
+      if (parsed?.end && d > parsed.end) return false;
+      return true;
     });
+
+    const income = filtered
+      .filter((tx) => tx.type === "INCOME")
+      .reduce((a, t) => a + t.amount, 0);
+    const expense = filtered
+      .filter((tx) => tx.type === "EXPENSE")
+      .reduce((a, t) => a + t.amount, 0);
+
+    return [{ period: formatRangeLabel(dateFrom, dateTo), income, expense }];
   }, [transactions, dateFrom, dateTo]);
 
   const COLORS = ["#259230ff", "#de2a06ff", "#eea810ff", "#FF8042"];
@@ -302,7 +284,6 @@ export default function Reports() {
         return;
       }
     }
-    // send only set params
     loadData({ from: dateFrom || undefined, to: dateTo || undefined });
   }
 
@@ -310,7 +291,7 @@ export default function Reports() {
     setDateFrom("");
     setDateTo("");
     setError("");
-    loadData(); // load all / fallback behaviour
+    loadData();
   }
 
   return (
@@ -359,9 +340,7 @@ export default function Reports() {
           </button>
         </div>
 
-        {loading && (
-          <div className="text-sm text-gray-600 ml-2">Loading...</div>
-        )}
+        {loading && <div className="text-sm text-gray-600 ml-2">Loading...</div>}
         {error && <div className="text-sm text-red-600 ml-2">{error}</div>}
       </div>
 
@@ -386,7 +365,7 @@ export default function Reports() {
             Customers (Added / Paid / Unpaid)
           </h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={customerReport as any}>
+            <BarChart data={customerReport}>
               <XAxis dataKey="period" />
               <YAxis />
               <Tooltip />
@@ -429,7 +408,7 @@ export default function Reports() {
             Transactions (Income / Expense)
           </h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={transactionReport as any}>
+            <BarChart data={transactionReport}>
               <XAxis dataKey="period" />
               <YAxis />
               <Tooltip />

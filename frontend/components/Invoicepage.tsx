@@ -4,31 +4,52 @@ import InvoiceTable from "../components/InvoiceTable";
 import InlineInvoiceView from "../components/InlineInvoiceView";
 import InvoiceForm from "../components/InvoiceForm";
 import { authFetch } from "../lib/api";
+import type { InvoicePayload } from "../components/InvoiceForm";
+
+type InvoiceItem = {
+  description: string;
+  hsn?: string;
+  quantity: number;
+  price: number;
+};
+
+type Customer = {
+  id?: number;
+  name?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+};
 
 type Invoice = {
   id: number;
   invoiceNumber?: string;
   date?: string;
-  customerId?: number;
+  dueDate?: string;
+  type?: "QUOTE" | "INVOICE";
+  currency?: string;
+  subtotal?: number;
+  totalGST?: number;
+  totalDiscount?: number;
+  advancePaid?: number;
   total?: number;
-  status?: string;
-  // Add other fields as needed
+  note?: string;
+  remark?: string;
+  items?: InvoiceItem[];
+  customerId?: number;
+  customer?: Customer;
 };
-// ...existing code...
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(
-    null
-  );
-  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null); // <-- new
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
 
-  // Load invoices
+  // ---------------- Load invoices ----------------
   useEffect(() => {
     (async () => {
       try {
-        // const data = await authFetch("/api/invoices");
-        // setInvoices(data);
         const data = await authFetch("/api/invoices");
         setInvoices(Array.isArray(data) ? data : []);
       } catch (error) {
@@ -37,17 +58,46 @@ export default function InvoicesPage() {
     })();
   }, []);
 
-  // Refresh invoices after edit
+  // ---------------- Refresh invoices ----------------
   async function refreshInvoices() {
     try {
-      // const data = await authFetch("/api/invoices");
-      // setInvoices(data);
       const data = await authFetch("/api/invoices");
       setInvoices(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to refresh invoices:", error);
     }
   }
+
+  // ---------------- Map Invoice to InvoicePayload ----------------
+  function mapInvoiceToPayload(inv: Invoice): InvoicePayload {
+  return {
+    id: inv.id,
+    type: inv.type === "QUOTE" ? "QUOTE" : "INVOICE",
+    customerId: inv.customerId ?? inv.customer?.id ?? 0,
+    customerName: inv.customer?.name ?? "",
+    customerCompany: inv.customer?.company ?? "",
+    customerEmail: inv.customer?.email ?? "",
+    customerPhone: inv.customer?.phone ?? "",
+    customerAddress: inv.customer?.address ?? "",
+    date: inv.date ?? new Date().toISOString().slice(0, 10),
+    dueDate: inv.dueDate ?? undefined,
+    items: inv.items?.map(it => ({
+      description: it.description ?? "",
+      hsn: it.hsn ?? "",
+      quantity: it.quantity ?? 1,
+      price: it.price ?? 0,
+    })) ?? [],
+    currency: inv.currency ?? "INR",
+    subtotal: inv.subtotal ?? 0,
+    totalGST: inv.totalGST ?? 0,
+    totalDiscount: inv.totalDiscount ?? 0,
+    advancePaid: inv.advancePaid ?? 0,
+    total: inv.total ?? 0,
+    note: inv.note ?? "",
+    remark: inv.remark ?? "",
+  };
+}
+
   return (
     <div>
       {selectedInvoiceId ? (
@@ -56,45 +106,13 @@ export default function InvoicesPage() {
           onBack={() => setSelectedInvoiceId(null)}
         />
       ) : editInvoice ? (
-        // <InvoiceForm
-        //   onCreated={async (updatedInvoice) => {
-        //     setEditInvoice(null);
-        //     await refreshInvoices();
-        //   }}
-        //   // Pass the invoice to edit
-        //   initialInvoice={editInvoice} // <-- we’ll handle this in InvoiceForm
-        // />
-
         <InvoiceForm
-          onCreated={async () => {
+          initialInvoice={mapInvoiceToPayload(editInvoice)}
+          onCreated={async (updatedInvoice) => {
+            // Update local state after save
             setEditInvoice(null);
             await refreshInvoices();
           }}
-          initialInvoice={
-            editInvoice
-              ? {
-                  id: editInvoice.id,
-                  type: "INVOICE", // default or fetch from backend if available
-                  customerId: editInvoice.customerId,
-                  customerName: "", // default empty if not present
-                  customerCompany: "",
-                  customerEmail: "",
-                  customerPhone: "",
-                  customerAddress: "",
-                  date:
-                    editInvoice.date || new Date().toISOString().slice(0, 10),
-                  items: [], // empty array if backend doesn't send items here
-                  currency: "INR",
-                  subtotal: 0,
-                  totalGST: 0,
-                  totalDiscount: 0,
-                  advancePaid: 0,
-                  total: editInvoice.total || 0,
-                  remark: "",
-                  note: "",
-                }
-              : undefined
-          }
         />
       ) : (
         <InvoiceTable
@@ -109,14 +127,10 @@ export default function InvoicesPage() {
             }
           }}
           onDelete={async (id) => {
-            if (!confirm("Are you sure you want to delete this invoice?"))
-              return;
-
+            if (!confirm("Are you sure you want to delete this invoice?")) return;
             try {
               await authFetch(`/api/invoices/${id}`, { method: "DELETE" });
-              // Refresh table
-              const data = await authFetch("/api/invoices");
-              setInvoices(data);
+              await refreshInvoices();
             } catch (err) {
               console.error("Failed to delete invoice:", err);
               alert("Failed to delete invoice.");
