@@ -28,7 +28,7 @@ const config: Config = {
         muted: "var(--muted)",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["playfair display"],
       },
       fontSize: {
         xs: "0.9375rem",   // 15px
