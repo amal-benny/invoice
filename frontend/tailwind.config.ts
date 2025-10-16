@@ -1,10 +1,12 @@
+
+
+
 import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "./app//*.{js,ts,jsx,tsx,mdx}",
-    "./pages//*.{js,ts,jsx,tsx,mdx}",
-    "./components//*.{js,ts,jsx,tsx,mdx}",
+    "./app//*.{ts,tsx,js,jsx}",
+    "./components//*.{ts,tsx,js,jsx}",
   ],
   theme: {
     extend: {
@@ -20,21 +22,25 @@ const config: Config = {
           600: "#A4214F",
           700: "#802949",
         },
+        background: "var(--bg)",
+        text: "var(--text)",
+        card: "var(--card)",
+        muted: "var(--muted)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Inter", "system-ui", "sans-serif"],
       },
       fontSize: {
-        xs: "0.9375rem", // 15px
-        sm: "1.125rem", // 18px
-        base: "1.25rem", // 20px
-        lg: "1.5rem", // 24px
-        xl: "1.75rem", // 28px
-        "2xl": "2rem", // 32px
-        "3xl": "2.25rem", // 36px
-        "4xl": "2.5rem", // 40px
-        "5xl": "2.75rem", // 44px
-        "6xl": "3rem", // 48px
+        xs: "0.9375rem",   // 15px
+        sm: "1.125rem",    // 18px
+        base: "1.25rem",   // 20px (matches globals.css)
+        lg: "1.5rem",      // 24px
+        xl: "1.75rem",     // 28px
+        "2xl": "2rem",     // 32px
+        "3xl": "2.25rem",  // 36px
+        "4xl": "2.5rem",   // 40px
+        "5xl": "2.75rem",  // 44px
+        "6xl": "3rem",     // 48px
       },
     },
   },

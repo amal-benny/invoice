@@ -3,24 +3,58 @@
 @tailwind utilities;
 
 /* -----------------------------------------------------------
-   FONT: Inter (imported statically to avoid hydration issues)
+   FONT FACE — Local Inter (using .ttf)
+   Place fonts in: /public/fonts/
+   Files needed:
+     Inter-Regular.ttf
+     Inter-Medium.ttf
+     Inter-SemiBold.ttf
+     Inter-Bold.ttf
 ----------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-html{
-  font-size: 100%;
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter_18pt-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter_18pt-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter_18pt-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter_18pt-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 /* -----------------------------------------------------------
    THEME VARIABLES
 ----------------------------------------------------------- */
+
 :root {
   --bg: #ffffff;
   --text: #1f2937; /* gray-800 */
   --card: #ffffff;
   --muted: #6b7280;
   --primary: #802949;
-  --font-size-base: 1.25rem; /* 20px */
+  --font-size-base: 1.25rem; /* 20px default body font */
 }
 
 /* Dark theme overrides */
@@ -34,6 +68,7 @@ html{
 /* -----------------------------------------------------------
    BASE LAYOUT
 ----------------------------------------------------------- */
+
 html, body, #__next {
   height: 100%;
 }
@@ -52,6 +87,7 @@ body {
 /* -----------------------------------------------------------
    TYPOGRAPHY
 ----------------------------------------------------------- */
+
 h1, h2, h3, h4, h5, h6 {
   color: var(--text);
   font-weight: 600;
@@ -66,6 +102,7 @@ p {
 /* -----------------------------------------------------------
    BUTTON STYLING
 ----------------------------------------------------------- */
+
 .btn {
   @apply px-5 py-3 rounded-2xl font-medium shadow-sm transition-all duration-200;
   background: linear-gradient(180deg, rgba(128,41,73,0.95), rgba(100,30,55,0.95));
@@ -80,6 +117,7 @@ p {
 /* -----------------------------------------------------------
    CARD COMPONENT
 ----------------------------------------------------------- */
+
 .card {
   background: var(--card);
   border-radius: 12px;
@@ -97,6 +135,7 @@ p {
 /* -----------------------------------------------------------
    INPUTS
 ----------------------------------------------------------- */
+
 .input {
   @apply w-full rounded-lg border border-gray-200 p-3 bg-transparent focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
   color: var(--text);
@@ -107,6 +146,7 @@ p {
 /* -----------------------------------------------------------
    MUTED TEXT / SMALL HELPERS
 ----------------------------------------------------------- */
+
 .kv {
   color: var(--muted);
   font-size: 1rem;
@@ -115,6 +155,7 @@ p {
 /* -----------------------------------------------------------
    SCROLLBAR (optional aesthetic tweak)
 ----------------------------------------------------------- */
+
 ::-webkit-scrollbar {
   width: 8px;
 }
