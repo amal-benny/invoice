@@ -334,7 +334,7 @@ export default function CustomerList() {
               onBlur={() => handleBlur("name")}
               required
               aria-invalid={!!errors.name}
-              
+
             />
             <FieldError name="name" />
           </div>
@@ -346,6 +346,7 @@ export default function CustomerList() {
               value={form.company}
               onChange={(e) => handleChange("company", e.target.value)}
               onBlur={() => handleBlur("company")}
+              required
             />
             <FieldError name="company" />
           </div>
@@ -357,6 +358,7 @@ export default function CustomerList() {
               value={form.email}
               onChange={(e) => handleChange("email", e.target.value)}
               onBlur={() => handleBlur("email")}
+              required
             />
             <FieldError name="email" />
           </div>
@@ -368,6 +370,7 @@ export default function CustomerList() {
               value={form.phone}
               onChange={(e) => handleChange("phone", e.target.value)}
               onBlur={() => handleBlur("phone")}
+              required
             />
             <FieldError name="phone" />
           </div>
@@ -379,6 +382,7 @@ export default function CustomerList() {
               value={form.panNumber}
               onChange={(e) => handleChange("panNumber", e.target.value.toUpperCase())}
               onBlur={() => handleBlur("panNumber")}
+              required
             />
             <FieldError name="panNumber" />
           </div>
@@ -390,6 +394,7 @@ export default function CustomerList() {
               value={form.gstNumber}
               onChange={(e) => handleChange("gstNumber", e.target.value.toUpperCase())}
               onBlur={() => handleBlur("gstNumber")}
+              required
             />
             <FieldError name="gstNumber" />
           </div>
@@ -401,6 +406,7 @@ export default function CustomerList() {
               value={form.stateName}
               onChange={(e) => handleChange("stateName", e.target.value)}
               onBlur={() => handleBlur("stateName")}
+              required
             />
             <FieldError name="stateName" />
           </div>
@@ -412,6 +418,7 @@ export default function CustomerList() {
               value={form.stateCode}
               onChange={(e) => handleChange("stateCode", e.target.value)}
               onBlur={() => handleBlur("stateCode")}
+              required
             />
             <FieldError name="stateCode" />
           </div>
@@ -423,6 +430,7 @@ export default function CustomerList() {
               value={form.address}
               onChange={(e) => handleChange("address", e.target.value)}
               onBlur={() => handleBlur("address")}
+              required
             />
             <FieldError name="address" />
           </div>

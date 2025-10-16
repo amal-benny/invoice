@@ -168,36 +168,42 @@ export default function SettingsForm({
           placeholder="Contact"
           value={form.contact}
           onChange={(e) => setForm({ ...form, contact: e.target.value })}
+          required
         />
         <input
           className="input col-span-2"
           placeholder="Address"
           value={form.address}
           onChange={(e) => setForm({ ...form, address: e.target.value })}
+          required
         />
         <input
           className="input"
           placeholder="GST Number"
           value={form.gstNumber}
           onChange={(e) => setForm({ ...form, gstNumber: e.target.value })}
+          required
         />
         <input
           className="input"
           placeholder="PAN Number"
           value={form.panNumber}
           onChange={(e) => setForm({ ...form, panNumber: e.target.value })}
+          required
         />
         <input
           className="input"
           placeholder="State Name"
           value={form.stateName}
           onChange={(e) => setForm({ ...form, stateName: e.target.value })}
+          required
         />
         <input
           className="input"
           placeholder="State Code"
           value={form.stateCode}
           onChange={(e) => setForm({ ...form, stateCode: e.target.value })}
+          required
         />
 
        
@@ -206,6 +212,7 @@ export default function SettingsForm({
           className="input"
           value={form.taxType}
           onChange={(e) => setForm({ ...form, taxType: e.target.value })}
+          required
         >
           <option value="GST">GST</option>
           <option value="VAT">VAT</option>
@@ -221,11 +228,13 @@ export default function SettingsForm({
           placeholder="Tax %"
           value={form.taxPercent}
           onChange={(e) => setForm({ ...form, taxPercent: e.target.value })}
+          required
         />
          <select
           className="input"
           value={form.currency}
           onChange={(e) => setForm({ ...form, currency: e.target.value })}
+          required
         >
           <option value="INR">INR</option>
           <option value="USD">USD</option>
