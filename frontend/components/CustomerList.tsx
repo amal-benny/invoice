@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash } from "lucide-react";
 
@@ -34,6 +34,9 @@ export type Customer = {
 
 type CustomerForm = Omit<Customer, "id" | "invoices">;
 
+type FormErrors = Partial<Record<keyof CustomerForm, string>>;
+type Touched = Partial<Record<keyof CustomerForm, boolean>>;
+
 export default function CustomerList() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,14 +58,18 @@ export default function CustomerList() {
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // validation-related state
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Touched>({});
+
   async function load() {
     setLoading(true);
     try {
       // include invoices & payments so we can calculate paid/balance
-      const data = await authFetch("/api/customers") as Customer[];
+      const data = (await authFetch("/api/customers")) as Customer[];
       setCustomers(data || []);
     } catch (err) {
-      alert("Failed to load customers" +err);
+      alert("Failed to load customers: " + err);
     } finally {
       setLoading(false);
     }
@@ -85,6 +92,8 @@ export default function CustomerList() {
       stateCode: "",
     });
     setEditing(null);
+    setErrors({});
+    setTouched({});
   }
 
   function startEdit(cust: Customer) {
@@ -99,15 +108,137 @@ export default function CustomerList() {
       stateName: cust.stateName || "",
       stateCode: cust.stateCode || "",
     });
-    setEditing(cust.id);
+    setEditing(cust.id ?? null);
+    setErrors({});
+    setTouched({});
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // ---------- Validation logic ----------
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const phoneRegex = /^\d{10}$/;
+  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/i; // PAN typical pattern
+  const gstRegex = /^[0-9]{2}[A-Z0-9]{13}$/i; // approximate GSTIN validation
+  const stateCodeRegex = /^\d{1,2}$/; // typically 1-2 digit codes (adjust as needed)
+
+  function validateField<K extends keyof CustomerForm>(key: K, value: CustomerForm[K]): string | undefined {
+    const v = (value ?? "").toString().trim();
+
+    switch (key) {
+      case "name":
+        if (!v) return "Name is required.";
+        if (v.length < 2) return "Name must be at least 2 characters.";
+        return undefined;
+
+      case "email":
+        if (!v) return undefined; // email optional
+        if (!emailRegex.test(v)) return "Enter a valid email address.";
+        return undefined;
+
+      case "phone":
+        if (!v) return undefined; // phone optional
+        if (!phoneRegex.test(v)) return "Phone must be 10 digits.";
+        return undefined;
+
+      case "panNumber":
+        if (!v) return undefined; // optional
+        if (!panRegex.test(v)) return "PAN format seems invalid (e.g. AAAAA9999A).";
+        return undefined;
+
+      case "gstNumber":
+        if (!v) return undefined; // optional
+        if (!gstRegex.test(v)) return "GSTIN format seems invalid (15 characters).";
+        return undefined;
+
+      case "stateCode":
+        if (!v) return undefined; // optional
+        if (!stateCodeRegex.test(v)) return "State code should be 1 or 2 digits.";
+        return undefined;
+
+      case "address":
+        if (!v) return undefined; // optional
+        if (v.length < 5) return "Address is too short.";
+        return undefined;
+
+      // company, stateName => optional, no strict checks
+      case "company":
+      case "stateName":
+      default:
+        return undefined;
+    }
+  }
+
+  function validateAll(currentForm: CustomerForm): FormErrors {
+    const newErrors: FormErrors = {};
+    // required fields: name
+    (Object.keys(currentForm) as (keyof CustomerForm)[]).forEach((k) => {
+      const err = validateField(k, currentForm[k]);
+      if (err) newErrors[k] = err;
+    });
+
+    // enforce name required specifically
+    if (!currentForm.name || String(currentForm.name).trim() === "") {
+      newErrors.name = "Name is required.";
+    }
+
+    return newErrors;
+  }
+
+  function handleChange<K extends keyof CustomerForm>(key: K, value: CustomerForm[K]) {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      // validate on change if field already touched
+      if (touched[key]) {
+        setErrors((prevErr) => {
+          const copy = { ...prevErr };
+          const err = validateField(key, value);
+          if (err) copy[key] = err; else delete copy[key];
+          return copy;
+        });
+      }
+      return next;
+    });
+  }
+
+  function handleBlur<K extends keyof CustomerForm>(key: K) {
+    setTouched((t) => ({ ...t, [key]: true }));
+    const err = validateField(key, form[key]);
+    setErrors((prev) => {
+      const copy = { ...prev };
+      if (err) copy[key] = err; else delete copy[key];
+      return copy;
+    });
+  }
+
+  // ---------- Submit ----------
   async function createOrUpdateCustomer(e: React.FormEvent) {
     e.preventDefault();
+
+    // Validate all
+    const newErrors = validateAll(form);
+    setErrors(newErrors);
+    // mark all touched so errors show
+    setTouched({
+      name: true,
+      company: true,
+      email: true,
+      phone: true,
+      address: true,
+      panNumber: true,
+      gstNumber: true,
+      stateName: true,
+      stateCode: true,
+    });
+
+    if (Object.keys(newErrors).length > 0) {
+      // do not submit
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     setSaving(true);
     try {
-      if (editing) {
+      if (editing !== null) {
         await authFetch(`/api/customers/${editing}`, {
           method: "PUT",
           body: JSON.stringify(form),
@@ -123,7 +254,7 @@ export default function CustomerList() {
       resetForm();
       load();
     } catch (err) {
-      alert("Save failed: " + ( err));
+      alert("Save failed: " + err);
     } finally {
       setSaving(false);
     }
@@ -136,8 +267,7 @@ export default function CustomerList() {
       if (editing === id) resetForm();
       load();
     } catch (err) {
-       alert("Delete failed: " + err);
-      
+      alert("Delete failed: " + err);
     }
   }
 
@@ -171,7 +301,7 @@ export default function CustomerList() {
   }
 
   // filter customers by search (name or company)
-  const filteredCustomers = customers.filter(c => {
+  const filteredCustomers = customers.filter((c) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     const name = String(c.name || "").toLowerCase();
@@ -179,27 +309,132 @@ export default function CustomerList() {
     return name.includes(q) || company.includes(q);
   });
 
+  // helper to show error message under input
+  function FieldError({ name }: { name: keyof CustomerForm }) {
+    if (!touched[name]) return null;
+    const msg = errors[name];
+    if (!msg) return null;
+    return <div className="text-sm text-red-600 mt-1">{msg}</div>;
+  }
+
+  const isFormInvalid = Object.keys(errors).length > 0;
+
   return (
     <div>
       {/* Create/Edit Form */}
       <div className="card mb-4">
-        <h3 className="font-semibold mb-3">{editing ? "Edit Customer" : "Create Customer"}</h3>
+        <h3 className="font-semibold mb-3">{editing !== null ? "Edit Customer" : "Create Customer"}</h3>
         <form onSubmit={createOrUpdateCustomer} className="grid grid-cols-2 gap-2">
-          <input className="input" placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
-          <input className="input" placeholder="Company" value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} />
-          <input className="input" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-          <input className="input" placeholder="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
-          <input className="input" placeholder="PAN Number" value={form.panNumber} onChange={e => setForm({ ...form, panNumber: e.target.value })} />
-          <input className="input" placeholder="GSTIN" value={form.gstNumber} onChange={e => setForm({ ...form, gstNumber: e.target.value })} />
-          <input className="input" placeholder="State Name" value={form.stateName} onChange={e => setForm({ ...form, stateName: e.target.value })} />
-          <input className="input" placeholder="State Code" value={form.stateCode} onChange={e => setForm({ ...form, stateCode: e.target.value })} />
-          <input className="input col-span-2" placeholder="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+          <div>
+            <input
+              className={`input ${errors.name && touched.name ? "border-red-400" : ""}`}
+              placeholder="Name"
+              value={form.name}
+              onChange={(e) => handleChange("name", e.target.value)}
+              onBlur={() => handleBlur("name")}
+              required
+              aria-invalid={!!errors.name}
+              
+            />
+            <FieldError name="name" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.company && touched.company ? "border-red-400" : ""}`}
+              placeholder="Company"
+              value={form.company}
+              onChange={(e) => handleChange("company", e.target.value)}
+              onBlur={() => handleBlur("company")}
+            />
+            <FieldError name="company" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.email && touched.email ? "border-red-400" : ""}`}
+              placeholder="Email"
+              value={form.email}
+              onChange={(e) => handleChange("email", e.target.value)}
+              onBlur={() => handleBlur("email")}
+            />
+            <FieldError name="email" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.phone && touched.phone ? "border-red-400" : ""}`}
+              placeholder="Phone"
+              value={form.phone}
+              onChange={(e) => handleChange("phone", e.target.value)}
+              onBlur={() => handleBlur("phone")}
+            />
+            <FieldError name="phone" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.panNumber && touched.panNumber ? "border-red-400" : ""}`}
+              placeholder="PAN Number"
+              value={form.panNumber}
+              onChange={(e) => handleChange("panNumber", e.target.value.toUpperCase())}
+              onBlur={() => handleBlur("panNumber")}
+            />
+            <FieldError name="panNumber" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.gstNumber && touched.gstNumber ? "border-red-400" : ""}`}
+              placeholder="GSTIN"
+              value={form.gstNumber}
+              onChange={(e) => handleChange("gstNumber", e.target.value.toUpperCase())}
+              onBlur={() => handleBlur("gstNumber")}
+            />
+            <FieldError name="gstNumber" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.stateName && touched.stateName ? "border-red-400" : ""}`}
+              placeholder="State Name"
+              value={form.stateName}
+              onChange={(e) => handleChange("stateName", e.target.value)}
+              onBlur={() => handleBlur("stateName")}
+            />
+            <FieldError name="stateName" />
+          </div>
+
+          <div>
+            <input
+              className={`input ${errors.stateCode && touched.stateCode ? "border-red-400" : ""}`}
+              placeholder="State Code"
+              value={form.stateCode}
+              onChange={(e) => handleChange("stateCode", e.target.value)}
+              onBlur={() => handleBlur("stateCode")}
+            />
+            <FieldError name="stateCode" />
+          </div>
+
+          <div className="col-span-2">
+            <input
+              className={`input col-span-2 ${errors.address && touched.address ? "border-red-400" : ""}`}
+              placeholder="Address"
+              value={form.address}
+              onChange={(e) => handleChange("address", e.target.value)}
+              onBlur={() => handleBlur("address")}
+            />
+            <FieldError name="address" />
+          </div>
+
           <div />
           <div className="flex gap-2 justify-end">
-            {editing && (
+            {editing !== null && (
               <button type="button" className="px-3 py-2 rounded-md border" onClick={resetForm}>Cancel</button>
             )}
-            <button className="btn" disabled={saving}>{saving ? "Saving..." : (editing ? "Update Customer" : "Create Customer")}</button>
+            <button className="btn" disabled={saving || isFormInvalid}>
+              {saving ? "Saving..." : (editing !== null ? "Update Customer" : "Create Customer")}
+            </button>
           </div>
         </form>
       </div>
@@ -210,7 +445,7 @@ export default function CustomerList() {
           type="text"
           placeholder="Search customers..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           className="input rounded-full border px-4 py-2 pr-10 text-sm shadow-sm focus:outline-none focus:ring-2 placeholder:text-gray-400"
           style={{ borderColor: "rgb(128,41,73)" }}
         />
@@ -232,7 +467,7 @@ export default function CustomerList() {
         ) : (
           <div className="space-y-2">
             {filteredCustomers.length === 0 && <div className="text-sm text-gray-500">No customers found.</div>}
-            {filteredCustomers.map(c => {
+            {filteredCustomers.map((c) => {
               const { totalPaid, balance } = computeCustomerAmounts(c);
 
               return (

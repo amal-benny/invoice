@@ -1,6 +1,8 @@
 import "./globals.css";
 import { ReactNode } from "react";
 
+
+
 export const metadata = {
   title: "Invoice Maker",
   description: "Admin & user dashboard"
