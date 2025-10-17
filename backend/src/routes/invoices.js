@@ -6,13 +6,17 @@ const prisma = new PrismaClient();
 const auth = require("../middlewares/auth");
 
 // Safe generateInvoiceNumber for concurrency
-async function generateInvoiceNumber() {
+async function generateInvoiceNumber(prefix) {
+  if (prefix !== "INV" && prefix !== "QTN") {
+    throw new Error("Prefix must be 'INV' or 'QTN'");
+  }
+
   return await prisma.$transaction(async (tx) => {
     const year = new Date().getFullYear();
 
     // Lock and get the latest invoice number
     const last = await tx.invoice.findFirst({
-      where: { invoiceNumber: { startsWith: `INV-${year}-` } },
+      where: { invoiceNumber: { startsWith: `${prefix}-${year}-` } },
       orderBy: { id: "desc" },
     });
 
@@ -22,7 +26,7 @@ async function generateInvoiceNumber() {
       if (match) nextNumber = parseInt(match[1], 10) + 1;
     }
 
-    return `INV-${year}-${String(nextNumber).padStart(3, "0")}`;
+    return `${prefix}-${year}-${String(nextNumber).padStart(3, "0")}`;
   });
 }
 
@@ -52,7 +56,8 @@ router.post("/", auth, async (req, res) => {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
-      const invoiceNumber = await generateInvoiceNumber();
+       const prefix = type === "QUOTE" ? "QTN" : "INV";
+      const invoiceNumber = await generateInvoiceNumber(prefix);
 
       let subtotal = 0,
         totalGST = 0,
@@ -139,7 +144,7 @@ router.post("/:id/convert", auth, async (req, res) => {
 
     if (invoice.type === "INVOICE") return res.json(invoice);
 
-    const invoiceNumber = await generateInvoiceNumber();
+    const invoiceNumber = await generateInvoiceNumber("INV");
 
     const updated = await prisma.invoice.update({
       where: { id },
