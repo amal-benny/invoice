@@ -1,11 +1,10 @@
 // components/PaymentModal.tsx
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { authFetch } from "../lib/api";
 import type { Invoicepay } from "@/src/types/invoice";
 
 type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card" | "Other";
-
 type WindowMethodType = "UPI" | "CASH" | "BANK" | "CARD";
 
 declare global {
@@ -18,14 +17,50 @@ export default function PaymentModal({
   invoice,
   onClose,
   onSuccess,
+  allowOverpay = false,
 }: {
   invoice: Invoicepay;
   onClose: () => void;
   onSuccess: (updatedInvoice: Invoicepay) => void;
+  allowOverpay?: boolean;
 }) {
-  const existingAdvance = Number(invoice?.advancePaid || 0);
-  const total = Number(invoice?.total || 0);
-  const remaining = Math.max(0, total - existingAdvance);
+  const currency = invoice?.currency ?? "INR";
+
+  // Compute subtotal, discount, taxable, taxAmount, total
+  const { subtotalNum, discountNum, taxable, taxAmount, total } = useMemo(() => {
+    const subtotalNum = Number(invoice?.subtotal ?? 0);
+    const discountNum = Number(invoice?.totalDiscount ?? 0);
+    const taxRaw = Number(invoice?.totalGST ?? 0); // could be fraction, percent, or absolute
+
+    const taxable = Math.max(0, subtotalNum - discountNum);
+
+    let taxAmount = 0;
+    if (taxRaw !== 0) {
+      if (Math.abs(taxRaw) <= 1) {
+        // fraction like 0.1 => 10% of taxable
+        taxAmount = taxable * taxRaw;
+      } else if (taxRaw > 1 && taxRaw <= 100) {
+        // percentage like 10 => 10% of taxable
+        taxAmount = taxable * (taxRaw / 100);
+      } else {
+        // absolute amount
+        taxAmount = taxRaw;
+      }
+    }
+
+    const total = Math.max(0, taxable + taxAmount);
+
+    return {
+      subtotalNum: Number(subtotalNum.toFixed(2)),
+      discountNum: Number(discountNum.toFixed(2)),
+      taxable: Number(taxable.toFixed(2)),
+      taxAmount: Number(taxAmount.toFixed(2)),
+      total: Number(total.toFixed(2)),
+    };
+  }, [invoice]);
+
+  const existingAdvance = Number(invoice?.advancePaid ?? 0);
+  const remaining = Math.max(0, Number((total - existingAdvance).toFixed(2)));
 
   const [amount, setAmount] = useState<number>(remaining || 0);
   const [method, setMethod] = useState<MethodType>("Cash");
@@ -34,9 +69,34 @@ export default function PaymentModal({
   const [reference, setReference] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
-  const isOverpayAllowed = true;
   const canSubmit = amount > 0 && !isNaN(amount);
+
+  function onAmountChange(raw: string) {
+    const parsed = Number(raw);
+    if (isNaN(parsed)) {
+      setAmount(0);
+      return;
+    }
+    const rounded = Math.round(parsed * 100) / 100;
+    setAmount(rounded);
+
+    if (!allowOverpay && rounded > remaining) {
+      setWarning(null);
+      setError(`Amount exceeds remaining balance (${currency} ${remaining.toFixed(2)})`);
+    } else if (allowOverpay && rounded > remaining) {
+      setError(null);
+      setWarning(
+        `Entered amount is greater than remaining balance. This will be recorded as an overpayment (excess: ${currency} ${(
+          rounded - remaining
+        ).toFixed(2)}).`
+      );
+    } else {
+      setError(null);
+      setWarning(null);
+    }
+  }
 
   async function submitPayment(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -44,10 +104,11 @@ export default function PaymentModal({
       setError("Enter a valid amount greater than 0");
       return;
     }
-    if (!isOverpayAllowed && amount > remaining) {
-      setError("Amount exceeds remaining balance");
+    if (!allowOverpay && amount > remaining) {
+      setError(`Amount exceeds remaining balance (${currency} ${remaining.toFixed(2)})`);
       return;
     }
+
     setError(null);
     setLoading(true);
 
@@ -61,7 +122,7 @@ export default function PaymentModal({
         reference?: string;
       } = {
         invoiceId: invoice.id,
-        amount,
+        amount: Math.round(amount * 100) / 100,
         method,
         date,
         note,
@@ -75,15 +136,12 @@ export default function PaymentModal({
         body: JSON.stringify(payload),
       })) as { invoice?: Invoicepay } | Invoicepay;
 
-      // Prefer backend-returned invoice
       const updatedInvoice: Invoicepay =
         "invoice" in resp && resp.invoice ? resp.invoice : (resp as Invoicepay);
 
-      // Ensure numbers
-      updatedInvoice.advancePaid = Number(updatedInvoice.advancePaid ?? 0);
-      updatedInvoice.total = Number(updatedInvoice.total ?? 0);
+      updatedInvoice.advancePaid = Number(Number(updatedInvoice.advancePaid ?? 0).toFixed(2));
+      updatedInvoice.total = Number(Number(updatedInvoice.total ?? total).toFixed(2));
 
-      // Compute status fallback if missing
       if (!updatedInvoice.status) {
         if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
         else if ((updatedInvoice.advancePaid || 0) <= 0) updatedInvoice.status = "PENDING";
@@ -94,21 +152,20 @@ export default function PaymentModal({
       onSuccess(updatedInvoice);
       onClose();
 
-       const methodMap: Record<MethodType, WindowMethodType> = {
+      const methodMap: Record<MethodType, WindowMethodType> = {
         Cash: "CASH",
         UPI: "UPI",
         "Bank Transfer": "BANK",
         Card: "CARD",
-        Other: "CASH", // fallback
+        Other: "CASH",
       };
 
       const windowMethod = methodMap[method];
-
       if (window.updateDashboardIncome) {
-        window.updateDashboardIncome(amount, windowMethod);
+        window.updateDashboardIncome(Math.round(amount * 100) / 100, windowMethod);
       }
     } catch (err) {
-      setError("Payment failed"+err);
+      setError("Payment failed: " + String(err));
     } finally {
       setLoading(false);
     }
@@ -128,26 +185,49 @@ export default function PaymentModal({
             <div>
               <strong>Invoice:</strong> {invoice.invoiceNumber}
             </div>
+
             <div>
-              <strong>Total:</strong> {invoice.currency} {total.toFixed(2)}
+              <strong>Subtotal:</strong> {currency} {subtotalNum.toFixed(2)}
             </div>
+
             <div>
-              <strong>Already Paid (advance):</strong> {invoice.currency} {existingAdvance.toFixed(2)}
+              <strong>Discount:</strong> {currency} {discountNum.toFixed(2)}
             </div>
+
             <div>
-              <strong>Remaining:</strong> {invoice.currency} {remaining.toFixed(2)}
+              <strong>Taxable (subtotal - discount):</strong> {currency} {taxable.toFixed(2)}
+            </div>
+
+            <div>
+              <strong>Tax (calculated):</strong> {currency} {taxAmount.toFixed(2)}
+              {invoice.totalGST !== undefined && (
+                <span className="ml-2 text-xs text-gray-500">({String(invoice.totalGST)})</span>
+              )}
+            </div>
+
+            <div>
+              <strong>Total:</strong> {currency} {total.toFixed(2)}
+            </div>
+
+            <div>
+              <strong>Already Paid (advance):</strong> {currency} {existingAdvance.toFixed(2)}
+            </div>
+
+            <div>
+              <strong>Remaining:</strong> {currency} {remaining.toFixed(2)}
             </div>
           </div>
 
           <form onSubmit={submitPayment} className="space-y-2">
             <div>
-              <label className="kv">Amount ({invoice.currency})</label>
+              <label className="kv">Amount to record ({currency})</label>
               <input
                 className="input"
                 type="number"
                 step="0.01"
                 value={amount}
-                onChange={(e) => setAmount(Number(e.target.value || 0))}
+                onChange={(e) => onAmountChange(e.target.value)}
+                placeholder={`${remaining.toFixed(2)}`}
               />
             </div>
 
@@ -196,6 +276,7 @@ export default function PaymentModal({
             </div>
 
             {error && <div className="text-sm text-red-600">{error}</div>}
+            {!error && warning && <div className="text-sm text-yellow-700">{warning}</div>}
 
             <div className="flex gap-2 mt-3">
               <button

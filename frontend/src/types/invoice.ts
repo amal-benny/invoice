@@ -100,6 +100,9 @@ export type TabKey =
 
  export type Invoicepay = {
   id: number;
+  subtotal?:number;
+  totalDiscount?:number;
+  totalGST?:number;
   invoiceNumber?: string;
   currency?: string;
   total?: number;
