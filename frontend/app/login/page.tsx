@@ -92,7 +92,7 @@ export default function LoginPage() {
 
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Enter your email"
             className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-purple-700"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -100,7 +100,7 @@ export default function LoginPage() {
           />
           <input
             type="password"
-            placeholder="Password"
+            placeholder="Enter your Password"
             className="w-full border border-gray-300 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-purple-700"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

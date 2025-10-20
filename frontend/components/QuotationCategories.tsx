@@ -9,6 +9,7 @@ type QuotationCategory = {
   description?: string | null;
   hsn?: string | null;
   price?: number | null;
+  deleted?: boolean;
   createdAt?: string;
   createdById?: number;
 };
@@ -34,8 +35,9 @@ export default function QuotationCategories() {
   const [saving, setSaving] = useState(false);
 
   const color = "rgb(128, 41, 73)";
+  const undoTimerRef = useRef<number | null>(null);
 
-  // user-specific key and deleted ids
+  // User-specific deleted categories stored in localStorage
   const computedUserKey = (() => {
     try {
       const u =
@@ -52,9 +54,7 @@ export default function QuotationCategories() {
       const raw = localStorage.getItem(computedUserKey);
       const parsed = raw ? JSON.parse(raw) : [];
       if (Array.isArray(parsed))
-        return parsed
-          .map((x) => Number(x))
-          .filter((n) => !Number.isNaN(n));
+        return parsed.map((x) => Number(x)).filter((n) => !Number.isNaN(n));
       return [];
     } catch {
       return [];
@@ -66,7 +66,6 @@ export default function QuotationCategories() {
     id: number;
     name: string;
   } | null>(null);
-  const undoTimerRef = useRef<number | null>(null);
 
   function persistDeletedIds(next: number[]) {
     try {
@@ -84,24 +83,35 @@ export default function QuotationCategories() {
         const data = await authFetch("/api/quotation-categories");
         const rawItems: QuotationCategory[] = Array.isArray(data) ? data : [];
         if (!mounted) return;
-        setItems(rawItems.filter((it) => !deletedIds.includes(it.id)));
+
+        // Apply deleted flag from localStorage
+        const updatedItems = rawItems.map((item) => ({
+          ...item,
+          deleted: deletedIds.includes(item.id),
+        }));
+
+        setItems(updatedItems);
       } catch (err) {
         console.error("Failed to load quotation categories", err);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
+
     return () => {
       mounted = false;
       if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
     };
-  }, []);
+  }, [deletedIds]);
 
+  // Do not filter deleted here; just filter by search
   function filtered() {
     const q = search.trim().toLowerCase();
-    const visible = items.filter((it) => !deletedIds.includes(it.id));
-    if (!q) return visible;
-    return visible.filter((it) => it.category.toLowerCase().includes(q));
+    let visible = items;
+    if (q) {
+      visible = visible.filter((it) => it.category.toLowerCase().includes(q));
+    }
+    return visible;
   }
 
   async function createItem(e?: React.FormEvent) {
@@ -120,14 +130,8 @@ export default function QuotationCategories() {
         headers: { "Content-Type": "application/json" },
       });
 
-      if (created?.id && deletedIds.includes(created.id)) {
-        const next = deletedIds.filter((x) => x !== created.id);
-        setDeletedIds(next);
-        persistDeletedIds(next);
-      }
-
-      if (!deletedIds.includes(created?.id)) {
-        setItems((s) => [created, ...s]);
+      if (created?.id) {
+        setItems((s) => [{ ...created, deleted: false }, ...s]);
       }
 
       setCreateForm({ category: "", description: "", hsn: "", price: "" });
@@ -165,7 +169,10 @@ export default function QuotationCategories() {
         }),
         headers: { "Content-Type": "application/json" },
       });
-      setItems((s) => s.map((it) => (it.id === id ? updated : it)));
+
+      setItems((s) =>
+        s.map((it) => (it.id === id ? { ...updated, deleted: it.deleted } : it))
+      );
       setEditingId(null);
     } catch (err) {
       alert("Update failed");
@@ -175,13 +182,19 @@ export default function QuotationCategories() {
     }
   }
 
-  function softDelete(id: number, name: string) {
-    if (deletedIds.includes(id)) return;
-    const next = [...deletedIds, id];
-    setDeletedIds(next);
-    persistDeletedIds(next);
-    setItems((s) => s.filter((it) => it.id !== id));
-    setLastDeleted({ id, name });
+  function softDelete(id: number) {
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, deleted: true } : it))
+    );
+
+    const nextDeleted = Array.from(new Set([...deletedIds, id]));
+    setDeletedIds(nextDeleted);
+    persistDeletedIds(nextDeleted);
+
+    setLastDeleted({
+      id,
+      name: items.find((it) => it.id === id)?.category || "",
+    });
 
     if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
     undoTimerRef.current = window.setTimeout(() => {
@@ -191,21 +204,7 @@ export default function QuotationCategories() {
   }
 
   function undoDelete() {
-    if (!lastDeleted) return;
-    const id = lastDeleted.id;
-    const next = deletedIds.filter((x) => x !== id);
-    setDeletedIds(next);
-    persistDeletedIds(next);
-
-    (async () => {
-      try {
-        const single = await authFetch(`/api/quotation-categories/${id}`);
-        if (single && single.id) setItems((s) => [single, ...s]);
-      } catch (err) {
-        console.error("Failed to fetch item for undo", err);
-      }
-    })();
-
+    // Only dismiss snackbar, do not undelete
     setLastDeleted(null);
     if (undoTimerRef.current) {
       window.clearTimeout(undoTimerRef.current);
@@ -219,7 +218,6 @@ export default function QuotationCategories() {
         <h3 className="text-lg font-semibold text-gray-800">
           Quotation Categories
         </h3>
-
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <input
@@ -229,21 +227,7 @@ export default function QuotationCategories() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <svg
-              className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
-              />
-            </svg>
           </div>
-
           {!creating ? (
             <button
               onClick={() => {
@@ -279,7 +263,7 @@ export default function QuotationCategories() {
       </div>
 
       {creating && (
-        <form onSubmit={(e) => createItem(e)} className="flex gap-3 mb-6">
+        <form onSubmit={createItem} className="flex gap-3 mb-6">
           <input
             id="qc-create-category"
             className="input rounded-lg px-3 py-2 focus:outline-none focus:ring-2"
@@ -340,8 +324,13 @@ export default function QuotationCategories() {
           {filtered().map((it) => (
             <div
               key={it.id}
-              className="p-4 rounded-xl bg-white shadow-md hover:shadow-lg transition border"
-              style={{ borderColor: color }}
+              className={`p-4 rounded-xl shadow-md hover:shadow-lg transition border`}
+              style={{
+                borderColor: color,
+                backgroundColor: it.deleted ? "#FEE2E2" : "white", // light red for deleted
+                opacity: it.deleted ? 0.7 : 1, // slightly transparent
+                textDecoration: it.deleted ? "line-through" : "none",
+              }}
             >
               {editingId === it.id ? (
                 <div className="flex flex-col gap-2">
@@ -352,6 +341,7 @@ export default function QuotationCategories() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, category: e.target.value })
                     }
+                    disabled={it.deleted} // disable editing for deleted
                   />
                   <input
                     className="input rounded-md px-3 py-2 focus:outline-none focus:ring-2"
@@ -361,6 +351,7 @@ export default function QuotationCategories() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, description: e.target.value })
                     }
+                    disabled={it.deleted}
                   />
                   <input
                     className="input rounded-md px-3 py-2 focus:outline-none focus:ring-2"
@@ -370,6 +361,7 @@ export default function QuotationCategories() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, hsn: e.target.value })
                     }
+                    disabled={it.deleted}
                   />
                   <input
                     className="input rounded-md px-3 py-2 focus:outline-none focus:ring-2"
@@ -379,6 +371,7 @@ export default function QuotationCategories() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, price: e.target.value })
                     }
+                    disabled={it.deleted}
                   />
                   <div className="flex gap-2 justify-end">
                     <button
@@ -394,7 +387,7 @@ export default function QuotationCategories() {
                       className="px-3 py-2 rounded-md text-white shadow"
                       style={{ backgroundColor: color, borderColor: color }}
                       onClick={() => saveEdit(it.id)}
-                      disabled={saving}
+                      disabled={saving || it.deleted} // disable save for deleted
                     >
                       <Save size={14} /> Save
                     </button>
@@ -413,18 +406,20 @@ export default function QuotationCategories() {
                     {it.price != null && <div>Price: {it.price}</div>}
                   </div>
                   <div className="flex items-center justify-end gap-2 mt-4">
-                    <button
-                      title="Edit"
-                      onClick={() => startEdit(it)}
-                      className="flex items-center gap-1 px-3 py-2 rounded-md border-2 shadow-sm transition-transform hover:scale-105 hover:bg-yellow-50"
-                      style={{ borderColor: "yellow", color: "yellow" }}
-                    >
-                      <Edit size={16} /> Edit
-                    </button>
+                    {!it.deleted && (
+                      <button
+                        title="Edit"
+                        onClick={() => startEdit(it)}
+                        className="flex items-center gap-1 px-3 py-2 rounded-md border-2 shadow-sm transition-transform hover:scale-105 hover:bg-green-50"
+                        style={{ borderColor: "green", color: "green" }}
+                      >
+                        <Edit size={16} /> Edit
+                      </button>
+                    )}
 
                     <button
-                      title="Remove"
-                      onClick={() => softDelete(it.id, it.category)}
+                      title="Delete"
+                      onClick={() => softDelete(it.id)}
                       className="flex items-center gap-1 px-3 py-2 rounded-md border-2 shadow-sm transition-transform hover:scale-105 hover:bg-red-50"
                       style={{ borderColor: "red", color: "red" }}
                     >

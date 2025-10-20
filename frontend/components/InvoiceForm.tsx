@@ -15,9 +15,9 @@ type Item = {
   hsn?: string | null;
 };
 
-type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card";
+// type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card";
 
-type DashboardUpdateFn = (method: MethodType, amount: number) => void;
+// type DashboardUpdateFn = (method: MethodType, amount: number) => void;
 /* --- New types --- */
 type Category = {
   id: number;
@@ -25,6 +25,7 @@ type Category = {
   description?: string;
   price?: number;
   hsn?: string;
+  deleted?: boolean;
 };
 
 type Customer = {
@@ -326,17 +327,30 @@ export default function InvoiceForm({
 
       // 1. Update dashboard balances for advance
       if (totals.advanceTotal > 0) {
-        const method = advanceMethod as MethodType;
+        // map the human-friendly method to dashboard method tokens
+        const mapMethod = (m: string): "CASH" | "BANK" | "UPI" | "CARD" => {
+          const lower = (m || "").toLowerCase();
+          if (lower.includes("cash")) return "CASH";
+          if (lower.includes("upi")) return "UPI";
+          if (lower.includes("card")) return "CARD";
+          // treat bank / bank transfer as BANK
+          return "BANK";
+        };
 
-        // safely cast window.updateDashboardIncome to the function type
+        const mappedMethod = mapMethod(advanceMethod);
+
         const updateDashboardIncome = (
           window as Window & {
-            updateDashboardIncome?: DashboardUpdateFn;
+            updateDashboardIncome?: (
+              method: "CASH" | "BANK" | "CARD" | "UPI",
+              amount: number
+            ) => void;
           }
         ).updateDashboardIncome;
 
         if (updateDashboardIncome) {
-          updateDashboardIncome(method, totals.advanceTotal);
+          // NOTE: method first, then amount
+          updateDashboardIncome(mappedMethod, totals.advanceTotal);
         }
       }
     } catch (err) {
@@ -583,7 +597,7 @@ export default function InvoiceForm({
                     value={it.category || ""}
                     onChange={(e) => {
                       const selectedCat = categories.find(
-                        (c) => c.category === e.target.value
+                        (c) => c.category === e.target.value && !c.deleted
                       );
                       if (selectedCat) {
                         updateItem(idx, {
@@ -598,11 +612,13 @@ export default function InvoiceForm({
                     }}
                   >
                     <option value="">Pick category</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.category}>
-                        {c.category}
-                      </option>
-                    ))}
+                    {categories
+                      .filter((c) => !c.deleted) // hide deleted categories
+                      .map((c) => (
+                        <option key={c.id} value={c.category}>
+                          {c.category}
+                        </option>
+                      ))}
                   </select>
 
                   {/* Description */}

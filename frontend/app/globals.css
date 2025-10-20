@@ -9,7 +9,7 @@
   --card: #ffffff;
   --muted: #6b7280;
   --primary: #802949;
-  --font-size-base: 1.25rem; /* 20px default body font */
+  --font-size-base: 1.10rem; /* 20px default body font */
 }
 
 /* dark theme overrides */
@@ -28,7 +28,7 @@ html, body, #__next {
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: "playfair display";
+  font-family: "Segoe UI";
   font-size: var(--font-size-base);
   line-height: 1.75;
   -webkit-font-smoothing: antialiased;

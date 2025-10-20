@@ -9,114 +9,172 @@ type SummaryRow = {
   closing: number;
 };
 
-type MethodType = "CASH" | "BANK";
+type MethodType = "CASH" | "BANK" | "CARD" | "UPI";
 
-// Extend window interface globally
+// Persisted shape in localStorage
+type PersistShape = {
+  cash: { starting: number; income: number };
+  bank: { starting: number; income: number };
+};
+
 declare global {
   interface Window {
-    updateDashboardIncome?: (amount: number, method: "CASH" | "BANK" | "CARD" | "UPI") => void;
+    updateDashboardIncome?: (method: MethodType, amount: number) => void;
+    // optional: a reset helper for dev/testing
+    resetDashboardBalances?: () => void;
+  }
+}
+
+const LS_KEY = "app_starting_balances_v1";
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function readPersisted(): PersistShape {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) {
+      return { cash: { starting: 0, income: 0 }, bank: { starting: 0, income: 0 } };
+    }
+    const parsed = JSON.parse(raw) as Partial<PersistShape>;
+    return {
+      cash: {
+        starting: Number(parsed?.cash?.starting ?? 0),
+        income: Number(parsed?.cash?.income ?? 0),
+      },
+      bank: {
+        starting: Number(parsed?.bank?.starting ?? 0),
+        income: Number(parsed?.bank?.income ?? 0),
+      },
+    };
+  } catch {
+    return { cash: { starting: 0, income: 0 }, bank: { starting: 0, income: 0 } };
+  }
+}
+
+function writePersisted(next: PersistShape) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage errors
   }
 }
 
 export default function DashboardSummary() {
+  // internal UI state (closing derived)
   const [cash, setCash] = useState<SummaryRow>({ starting: 0, income: 0, closing: 0 });
   const [bank, setBank] = useState<SummaryRow>({ starting: 0, income: 0, closing: 0 });
 
   const [startAmount, setStartAmount] = useState<number | "">("");
-  const [startMethod, setStartMethod] = useState<MethodType>("CASH");
+  const [startMethod, setStartMethod] = useState<"CASH" | "BANK">("CASH");
   const [busy, setBusy] = useState(false);
 
-  const LS_KEY = "app_starting_balances_v1";
-
+  // On mount: read persisted starting & income values
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      const parsed = raw
-        ? JSON.parse(raw)
-        : { cash: { starting: 0 }, bank: { starting: 0 } };
-
-      setCash({
-        starting: Number(parsed.cash.starting ?? 0),
-        income: 0,
-        closing: Number(parsed.cash.starting ?? 0),
-      });
-      setBank({
-        starting: Number(parsed.bank.starting ?? 0),
-        income: 0,
-        closing: Number(parsed.bank.starting ?? 0),
-      });
-    } catch {
-      setCash({ starting: 0, income: 0, closing: 0 });
-      setBank({ starting: 0, income: 0, closing: 0 });
-    }
+    const p = readPersisted();
+    setCash({
+      starting: round2(p.cash.starting),
+      income: round2(p.cash.income),
+      closing: round2(p.cash.starting + p.cash.income),
+    });
+    setBank({
+      starting: round2(p.bank.starting),
+      income: round2(p.bank.income),
+      closing: round2(p.bank.starting + p.bank.income),
+    });
   }, []);
 
-  async function saveStartingBalance(method: MethodType, amount: number) {
+  // Save starting balance, persist without losing any existing income
+  async function saveStartingBalance(method: "CASH" | "BANK", amount: number) {
     setBusy(true);
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      const parsed = raw
-        ? JSON.parse(raw)
-        : { cash: { starting: 0 }, bank: { starting: 0 } };
-      const next = {
-        ...parsed,
-        [method === "CASH" ? "cash" : "bank"]: { starting: amount },
+      const p = readPersisted();
+      const next: PersistShape = {
+        cash: { ...p.cash },
+        bank: { ...p.bank },
       };
-      localStorage.setItem(LS_KEY, JSON.stringify(next));
-
       if (method === "CASH") {
-        setCash(prev => ({
-          starting: amount,
-          income: prev.income,
-          closing: Math.round((amount + prev.income) * 100) / 100,
-        }));
+        next.cash.starting = round2(amount);
       } else {
-        setBank(prev => ({
-          starting: amount,
-          income: prev.income,
-          closing: Math.round((amount + prev.income) * 100) / 100,
-        }));
+        next.bank.starting = round2(amount);
       }
+      writePersisted(next);
+
+      // update UI using persisted values
+      setCash({
+        starting: round2(next.cash.starting),
+        income: round2(next.cash.income),
+        closing: round2(next.cash.starting + next.cash.income),
+      });
+      setBank({
+        starting: round2(next.bank.starting),
+        income: round2(next.bank.income),
+        closing: round2(next.bank.starting + next.bank.income),
+      });
     } finally {
       setBusy(false);
     }
   }
 
-  const hasStartingForMethod = (method: MethodType) =>
+  const hasStartingForMethod = (method: "CASH" | "BANK") =>
     method === "CASH" ? cash.starting !== 0 : bank.starting !== 0;
 
-  const onSubmitStarting = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const amt = Number(startAmount || 0);
-    if (isNaN(amt) || amt < 0) return alert("Enter a valid amount");
-    await saveStartingBalance(startMethod, amt);
-    setStartAmount("");
-  };
+  // Add payment and persist it — method FIRST, amount SECOND
+  const addPaymentToSummary = useCallback((method: MethodType, amount: number) => {
+    const amt = round2(amount);
+    if (amt <= 0) return;
 
-  const addPaymentToSummary = useCallback(
-    (amount: number, method: "CASH" | "BANK" | "CARD" | "UPI") => {
-      if (amount <= 0) return;
-      const targetMethod: MethodType = method === "CASH" ? "CASH" : "BANK";
-      if (targetMethod === "CASH") {
-        setCash(prev => ({
-          ...prev,
-          income: prev.income + amount,
-          closing: Math.round((prev.starting + prev.income + amount) * 100) / 100,
-        }));
-      } else {
-        setBank(prev => ({
-          ...prev,
-          income: prev.income + amount,
-          closing: Math.round((prev.starting + prev.income + amount) * 100) / 100,
-        }));
-      }
-    },
-    []
-  );
+    const persisted = readPersisted();
 
-  // Expose globally with proper type
+    // treat CARD/UPI as BANK for balances (change if you want separate)
+    if (method === "CASH") {
+      const newIncome = round2(persisted.cash.income + amt);
+      const next: PersistShape = {
+        ...persisted,
+        cash: { ...persisted.cash, income: newIncome },
+      };
+      writePersisted(next);
+      setCash({
+        starting: round2(next.cash.starting),
+        income: round2(next.cash.income),
+        closing: round2(next.cash.starting + next.cash.income),
+      });
+    } else {
+      // BANK (including CARD/UPI)
+      const newIncome = round2(persisted.bank.income + amt);
+      const next: PersistShape = {
+        ...persisted,
+        bank: { ...persisted.bank, income: newIncome },
+      };
+      writePersisted(next);
+      setBank({
+        starting: round2(next.bank.starting),
+        income: round2(next.bank.income),
+        closing: round2(next.bank.starting + next.bank.income),
+      });
+    }
+  }, []);
+
+  // Expose global method (method first, amount second)
   useEffect(() => {
     window.updateDashboardIncome = addPaymentToSummary;
+
+    // optional dev helper to reset balances from console
+    window.resetDashboardBalances = () => {
+      const zero: PersistShape = {
+        cash: { starting: 0, income: 0 },
+        bank: { starting: 0, income: 0 },
+      };
+      writePersisted(zero);
+      setCash({ starting: 0, income: 0, closing: 0 });
+      setBank({ starting: 0, income: 0, closing: 0 });
+    };
+
+    return () => {
+      delete window.updateDashboardIncome;
+      delete window.resetDashboardBalances;
+    };
   }, [addPaymentToSummary]);
 
   return (
@@ -185,7 +243,13 @@ export default function DashboardSummary() {
       <div className="card p-4">
         <h4 className="font-semibold mb-2">Set Starting Balance</h4>
         <form
-          onSubmit={onSubmitStarting}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const amt = Number(startAmount || 0);
+            if (isNaN(amt) || amt < 0) return alert("Enter a valid amount");
+            saveStartingBalance(startMethod, round2(amt));
+            setStartAmount("");
+          }}
           className="flex flex-col md:flex-row items-start gap-3"
         >
           <input
@@ -194,14 +258,14 @@ export default function DashboardSummary() {
             className="input w-full md:w-64"
             placeholder="Amount"
             value={startAmount === "" ? "" : String(startAmount)}
-            onChange={e =>
+            onChange={(e) =>
               setStartAmount(e.target.value === "" ? "" : Number(e.target.value))
             }
           />
           <select
             className="input w-full md:w-48"
             value={startMethod}
-            onChange={e => setStartMethod(e.target.value as MethodType)}
+            onChange={(e) => setStartMethod(e.target.value as "CASH" | "BANK")}
           >
             <option value="CASH">Cash</option>
             <option value="BANK">Bank</option>
@@ -229,8 +293,7 @@ export default function DashboardSummary() {
           </div>
         </form>
         <div className="text-sm text-gray-500 mt-3">
-          Note: Payments from invoices (advance or full) automatically update the
-          summary.
+          Note: Payments from invoices and the payment modal automatically update the summary.
         </div>
       </div>
     </div>
