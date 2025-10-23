@@ -105,4 +105,22 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
+// GET: list payments for logged-in user only
+router.get("/", auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const payments = await prisma.payment.findMany({
+      where: { createdById: userId }, // ✅ use correct field
+      include: { invoice: true },
+      orderBy: { date: "desc" },
+    });
+    res.json(payments);
+  } catch (err) {
+    console.error("Failed to fetch payments:", err);
+    res.status(500).json({ message: "Failed to fetch payments" });
+  }
+});
+
+
+
 module.exports = router;

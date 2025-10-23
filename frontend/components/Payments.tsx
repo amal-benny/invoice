@@ -1,10 +1,18 @@
+// payment.tsx
 "use client";
 import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
-import { Wallet, CreditCard, TrendingUp, DollarSign } from "lucide-react";
+import {
+  Wallet,
+  CreditCard,
+  TrendingUp,
+  DollarSign,
+  ArrowUp,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import type { Settings } from "@/src/types/invoice";
+import PaymentsTable from "./PaymentsTable";
 
 type TransactionType = "INCOME" | "EXPENSE";
 
@@ -15,7 +23,7 @@ interface Transaction {
   amount: number;
   date: string;
   description?: string;
-  method: "Cash" | "Bank";
+  method: "Cash" | "Bank" | "UPI" | "Card" | string;
   reference?: string;
   closingBalance?: number;
 }
@@ -23,7 +31,7 @@ interface Transaction {
 interface Balance {
   id: number;
   amount: number;
-  method: "Cash" | "Bank";
+  method: "Cash" | "Bank" | string;
   date: string;
 }
 
@@ -51,7 +59,8 @@ interface Stats {
   bankClosing: number;
 }
 
-// Helper to convert number to words
+
+// Helper to convert number to words (unchanged)
 function numberToWords(num: number): string {
   if (!num && num !== 0) return "";
   num = Math.floor(num);
@@ -128,6 +137,8 @@ export default function Payments() {
   const [newMethod, setNewMethod] = useState<"Cash" | "Bank">("Cash");
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null);
+  const [editingTransaction, setEditingTransaction] =
+    useState<Transaction | null>(null);
 
   const [txnForm, setTxnForm] = useState({
     type: "INCOME" as TransactionType,
@@ -159,6 +170,19 @@ export default function Payments() {
     bankClosing: 0,
   });
 
+const [, setSummary] = useState({
+  cashIncome: 0,
+  bankIncome: 0,
+  upiIncome: 0,
+  cardIncome: 0,
+  totalIncome: 0,
+  closingBalance: 0,
+  netProfit: 0,
+  openingBalance: 0,  // if you have an opening balance
+  totalExpense: 0     // if you have total expense
+});
+
+
   const [downloadRange, setDownloadRange] = useState<{
     startDate?: string;
     endDate?: string;
@@ -170,6 +194,7 @@ export default function Payments() {
     loadLedgers();
   }, []);
 
+  // Recalculate summary whenever transactions OR balances change
   useEffect(() => {
     calculateSummary();
   }, [transactions, balances]);
@@ -184,106 +209,223 @@ export default function Payments() {
   }
 
   async function loadBalances() {
-    const data: Balance[] = await authFetch("/api/transactions/balance");
-    setBalances(data);
+    try {
+      const data = (await authFetch("/api/transactions/balance")) as Balance[];
+      const normalized: Balance[] = data.map((b) => ({
+        ...b,
+        method: b.method.charAt(0).toUpperCase() + b.method.slice(1).toLowerCase() as "Cash" | "Bank",
+      }));
+      setBalances(normalized);
 
-    const existingBalance = data.find((b) => b.method === newMethod) || null;
-    if (existingBalance) {
+      const existingBalance = normalized.find((b) => b.method === newMethod) || null;
       setEditingBalance(existingBalance);
-      setNewBalance(existingBalance.amount);
-    } else {
-      setEditingBalance(null);
-      setNewBalance(0);
+      setNewBalance(existingBalance ? existingBalance.amount : 0);
+    } catch (err) {
+      console.error("Failed to load balances", err);
     }
   }
 
-  async function loadTransactions() {
-    const query = new URLSearchParams(
-      Object.fromEntries(
-        Object.entries(search).filter(([, v]) => v !== "")
-      ) as Record<string, string>
-    ).toString();
 
-    const data: Transaction[] = await authFetch(`/api/transactions?${query}`);
-    setTransactions(data);
+   async function loadTransactions() {
+    try {
+      const query = new URLSearchParams(
+        Object.fromEntries(Object.entries(search).filter(([, v]) => v !== ""))
+      ).toString();
+
+      const data = (await authFetch(`/api/transactions?${query}`)) as Transaction[];
+
+      const normalized = data.map((t) => ({
+        ...t,
+        method: t.method.charAt(0).toUpperCase() + t.method.slice(1).toLowerCase() as "Cash" | "Bank",
+      })) as Transaction[];
+
+      setTransactions(normalized);
+    } catch (err) {
+      console.error("Failed to load transactions", err);
+    }
   }
 
   async function addOrUpdateBalance() {
-    if (!newBalance) return;
+    if (!newBalance && newBalance !== 0) return;
 
-    if (editingBalance) {
-      await authFetch(`/api/transactions/balance/${editingBalance.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ amount: newBalance, method: newMethod }),
-        headers: { "Content-Type": "application/json" },
-      });
-    } else {
-      await authFetch("/api/transactions/balance", {
-        method: "POST",
-        body: JSON.stringify({ amount: newBalance, method: newMethod }),
-        headers: { "Content-Type": "application/json" },
-      });
+    try {
+      if (editingBalance) {
+        await authFetch(`/api/transactions/balance/${editingBalance.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ amount: newBalance, method: newMethod }),
+          headers: { "Content-Type": "application/json" },
+        });
+      } else {
+        await authFetch("/api/transactions/balance", {
+          method: "POST",
+          body: JSON.stringify({ amount: newBalance, method: newMethod }),
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to save balance", err);
+    } finally {
+      setNewBalance(0);
+      setEditingBalance(null);
+      setNewMethod("Cash");
+      // reload balances & recalc summary
+      await loadBalances();
     }
-
-    setNewBalance(0);
-    setEditingBalance(null);
-    setNewMethod("Cash");
-    loadBalances();
   }
 
+  // IMPORTANT: when adding/updating transaction we:
+  // 1) build payload
+  // 2) call API
+  // 3) if server returned saved tx, use it, else create optimistic tx with id Date.now()
+  // 4) update transactions array deterministically (replace if found)
+  // 5) call calculateSummary with the new array (immediate update)
+  // 6) set state and re-sync with server (loadTransactions)
   async function addTransaction() {
-    await authFetch("/api/transactions", {
-      method: "POST",
-      body: JSON.stringify(txnForm),
-      headers: { "Content-Type": "application/json" },
-    });
+    try {
+      const payload = {
+        ...txnForm,
+        amount: Number(txnForm.amount || 0),
+        date: txnForm.date ? txnForm.date : new Date().toISOString(),
+      };
 
-    setTxnForm({
-      type: "INCOME",
-      category: "",
-      amount: 0,
-      date: "",
-      description: "",
-      method: "Cash",
-      reference: "",
-    });
-    setUseOtherCategory(false);
+      let saved: Transaction | null = null;
 
-    loadTransactions();
+      if (editingTransaction) {
+        saved = await authFetch(`/api/transactions/${editingTransaction.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+          headers: { "Content-Type": "application/json" },
+        });
+      } else {
+        saved = await authFetch("/api/transactions", {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const txToUse: Transaction =
+        (saved as Transaction) ||
+        ({
+          id: editingTransaction?.id || Date.now(),
+          ...payload,
+        } as Transaction);
+
+      // normalize method string on saved tx
+      txToUse.method =
+        typeof txToUse.method === "string"
+          ? txToUse.method.charAt(0).toUpperCase() + txToUse.method.slice(1).toLowerCase()
+          : txToUse.method;
+
+      // Build the new transactions array deterministically
+      const newTxs = (() => {
+        const exists = transactions.some((t) => t.id === txToUse.id);
+        if (exists) {
+          return transactions.map((t) => (t.id === txToUse.id ? txToUse : t));
+        }
+        return [...transactions, txToUse];
+      })();
+
+      // Update state with the new array and recalc summary immediately
+      // We call calculateSummary with newTxs explicitly to avoid timing issues
+      setTransactions(newTxs);
+      calculateSummary(newTxs);
+    } catch (err) {
+      console.error("Failed to add/update transaction", err);
+    } finally {
+      // Reset form and editing state
+      setTxnForm({
+        type: "INCOME",
+        category: "",
+        amount: 0,
+        date: "",
+        description: "",
+        method: "Cash",
+        reference: "",
+      });
+      setUseOtherCategory(false);
+      setEditingTransaction(null);
+
+      // Re-sync with server (best effort)
+      try {
+        await loadTransactions();
+        await loadBalances();
+      } catch (e) {console.error("Failed to load transactions", e);
+
+        // ignore sync errors; UI already updated optimistically
+      }
+    }
   }
 
-  function calculateSummary() {
-    const cashStarting = balances.find((b) => b.method === "Cash")?.amount || 0;
-    const bankStarting = balances.find((b) => b.method === "Bank")?.amount || 0;
+  // calculateSummary accepts an optional transactionsList to allow immediate recalculation
+  function calculateSummary(transactionsList?: Transaction[]) {
+    const txs = transactionsList ?? transactions;
+    const cashStarting = balances.find((b) => (b.method || "").toString().toLowerCase() === "cash")?.amount || 0;
+    const bankStarting = balances.find((b) => (b.method || "").toString().toLowerCase() === "bank")?.amount || 0;
 
     let cashIncome = 0,
       cashExpense = 0,
       bankIncome = 0,
       bankExpense = 0;
 
-    transactions.forEach((tx) => {
-      if (tx.method === "Cash") {
-        if (tx.type === "INCOME") cashIncome += tx.amount;
-        else cashExpense += tx.amount;
-      } else {
-        if (tx.type === "INCOME") bankIncome += tx.amount;
-        else bankExpense += tx.amount;
+    txs.forEach((tx) => {
+      const method = (tx.method || "").toString().toLowerCase();
+      if (method === "cash") {
+        if (tx.type === "INCOME") cashIncome += Number(tx.amount || 0);
+        else cashExpense += Number(tx.amount || 0);
+      } else if (method === "bank") {
+        if (tx.type === "INCOME") bankIncome += Number(tx.amount || 0);
+        else bankExpense += Number(tx.amount || 0);
       }
     });
 
     setStats({
       cashStarting,
-      cashIncome,
-      cashExpense,
-      cashNet: cashIncome - cashExpense,
-      cashClosing: cashStarting + cashIncome - cashExpense,
+      cashIncome: parseFloat(cashIncome.toFixed(2)),
+      cashExpense: parseFloat(cashExpense.toFixed(2)),
+      cashNet: parseFloat((cashIncome - cashExpense).toFixed(2)),
+      cashClosing: parseFloat((cashStarting + cashIncome - cashExpense).toFixed(2)),
       bankStarting,
-      bankIncome,
-      bankExpense,
-      bankNet: bankIncome - bankExpense,
-      bankClosing: bankStarting + bankIncome - bankExpense,
+      bankIncome: parseFloat(bankIncome.toFixed(2)),
+      bankExpense: parseFloat(bankExpense.toFixed(2)),
+      bankNet: parseFloat((bankIncome - bankExpense).toFixed(2)),
+      bankClosing: parseFloat((bankStarting + bankIncome - bankExpense).toFixed(2)),
     });
   }
+
+useEffect(() => {
+  // Make this function available globally
+  window.updateDashboardIncome = (method: "CASH" | "BANK" | "UPI" | "CARD", amount: number) => {
+    setSummary(prev => {
+      // prev = { cashIncome, bankIncome, upiIncome, cardIncome, closingBalance, netProfit, ... }
+      let cashIncome = prev.cashIncome;
+      let bankIncome = prev.bankIncome;
+      let upiIncome = prev.upiIncome;
+      let cardIncome = prev.cardIncome;
+
+      if (method === "CASH") cashIncome += amount;
+      else if (method === "BANK") bankIncome += amount;
+      else if (method === "UPI") upiIncome += amount;
+      else if (method === "CARD") cardIncome += amount;
+
+      const totalIncome = cashIncome + bankIncome + upiIncome + cardIncome;
+      const closingBalance = prev.openingBalance + totalIncome - prev.totalExpense;
+      const netProfit = totalIncome - prev.totalExpense; // adjust if needed
+
+      return {
+        ...prev,
+        cashIncome,
+        bankIncome,
+        upiIncome,
+        cardIncome,
+        totalIncome,
+        closingBalance,
+        netProfit,
+      };
+    });
+  };
+}, []);
+
 
   // --- downloadExcel & printRow keep same types ---
   function downloadExcel() {
@@ -504,43 +646,36 @@ export default function Payments() {
         </div>
 
         <div class="voucher-body">
-          <table class="fields">
-            <tr>
-              <td class="label">Head of Account</td>
-              <td>${tx.category || "-"}</td>
-              <td rowspan="4" style="width:180px; text-align:center;">
-                <div style="font-size:12px;color:#666;margin-bottom:6px;">Payment</div>
-                <div class="amount-box">₹ ${amountFormatted}</div>
-              </td>
-            </tr>
+  <table class="fields">
+    <tr>
+      <td class="label">Head of Account</td>
+      <td>${tx.category || "-"}</td>
+    </tr>
 
-            <tr>
-              <td class="label">Paid To</td>
-              <td>${tx.reference || "-"}</td>
-            </tr>
+    <tr>
+      <td class="label">Towards</td>
+      <td>${tx.description || "-"}</td>
+    </tr>
 
-            <tr>
-              <td class="label">Towards</td>
-              <td>${tx.description || "-"}</td>
-            </tr>
+    <tr>
+      <td class="label">Method</td>
+      <td>${tx.method || "-"}</td>
+    </tr>
+  </table>
 
-            <tr>
-              <td class="label">Method</td>
-              <td>${tx.method || "-"}</td>
-            </tr>
-          </table>
+  <div class="in-words" style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; width: 100%;">
+  <span>INR ${numberToWords(Number(tx.amount) || 0)} Only</span>
+  <div class="amount-box">₹ ${amountFormatted}</div>
+</div>
 
-          <div class="in-words">
-            INR ${numberToWords(Number(tx.amount) || 0)} Only
-          </div>
 
-          <div class="signatures">
-            <div class="sig">Approved by Authority<br/><br/>__________________</div>
-            <div class="sig">Office Accountant<br/><br/>__________________</div>
-            <div class="sig">Signature of the Receiver<br/><br/>__________________</div>
-          </div>
-        </div>
-      </div>
+  <div class="signatures">
+    <div class="sig">Approved by Authority<br/><br/>__________________</div>
+    <div class="sig">Office Accountant<br/><br/>__________________</div>
+    <div class="sig">Signature of the Receiver<br/><br/>__________________</div>
+  </div>
+</div>
+
 
       <script>
         // auto print and close
@@ -579,12 +714,29 @@ export default function Payments() {
     }
   }
 
+  const editTransaction = (tx: Transaction) => {
+    setEditingTransaction(tx);
+    setTxnForm({
+      type: tx.type,
+      category: tx.category,
+      amount: tx.amount,
+      date: tx.date ? tx.date.split("T")[0] : tx.date,
+      description: tx.description || "",
+      method: (tx.method as "Cash" | "Bank") || "Cash",
+      reference: tx.reference || "",
+    });
+    setUseOtherCategory(false);
+  };
+
+ 
+
+
   return (
     <div className="space-y-6">
       {/* --- Cash Summary --- */}
       <div className="mb-4">
         <h3 className="font-semibold mb-2">Cash Balance Summary</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
           <div className="card p-4 flex items-center gap-3 border-2 border-green-200">
             <Wallet className="w-6 h-6 text-green-500" />
             <div>
@@ -600,6 +752,20 @@ export default function Payments() {
             </div>
           </div>
           <div className="card p-4 flex items-center gap-3 border-2 border-green-200">
+            <DollarSign className="w-6 h-6 text-green-600" />
+            <div>
+              <div className="kv">Expense</div>
+              <div className="text-2xl font-bold">₹{stats.cashExpense}</div>
+            </div>
+          </div>
+          <div className="card p-4 flex items-center gap-3 border-2 border-green-200">
+            <ArrowUp className="w-6 h-6 text-green-500" />
+            <div>
+              <div className="kv">Net</div>
+              <div className="text-2xl font-bold">₹{stats.cashNet}</div>
+            </div>
+          </div>
+          <div className="card p-4 flex items-center gap-3 border-2 border-green-200">
             <DollarSign className="w-6 h-6 text-green-500" />
             <div>
               <div className="kv">Closing Balance</div>
@@ -612,7 +778,7 @@ export default function Payments() {
       {/* --- Bank Summary --- */}
       <div className="mb-4">
         <h3 className="font-semibold mb-2">Bank Balance Summary</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
           <div className="card p-4 flex items-center gap-3 border-2 border-blue-200">
             <CreditCard className="w-6 h-6 text-blue-500" />
             <div>
@@ -625,6 +791,20 @@ export default function Payments() {
             <div>
               <div className="kv">Income</div>
               <div className="text-2xl font-bold">₹{stats.bankIncome}</div>
+            </div>
+          </div>
+          <div className="card p-4 flex items-center gap-3 border-2 border-blue-200">
+            <DollarSign className="w-6 h-6 text-blue-600" />
+            <div>
+              <div className="kv">Expense</div>
+              <div className="text-2xl font-bold">₹{stats.bankExpense}</div>
+            </div>
+          </div>
+          <div className="card p-4 flex items-center gap-3 border-2 border-blue-200">
+            <ArrowUp className="w-6 h-6 text-blue-500" />
+            <div>
+              <div className="kv">Net</div>
+              <div className="text-2xl font-bold">₹{stats.bankNet}</div>
             </div>
           </div>
           <div className="card p-4 flex items-center gap-3 border-2 border-blue-200">
@@ -687,7 +867,9 @@ export default function Payments() {
 
       {/* --- Add Transaction --- */}
       <div className="card p-4">
-        <h3 className="font-semibold mb-2">Add New Transaction</h3>
+        <h3 className="font-semibold mb-2">
+          {editingTransaction ? "Edit Transaction" : "Add New Transaction"}
+        </h3>
         <div className="grid grid-cols-3 gap-2 mb-2">
           <select
             className="input"
@@ -749,7 +931,7 @@ export default function Payments() {
           <input
             className="input"
             type="date"
-            value={txnForm.date}
+            value={txnForm.date || ""}
             onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })}
           />
           <input
@@ -783,7 +965,7 @@ export default function Payments() {
           />
           <div />
           <button className="btn col-span-1" onClick={addTransaction}>
-            Add Transaction
+            {editingTransaction ? "Update Transaction" : "Add Transaction"}
           </button>
         </div>
       </div>
@@ -969,6 +1151,13 @@ export default function Payments() {
                       {/* Action Button */}
                       <td className="p-3 text-center align-top">
                         <button
+                          className="text-white text-xs px-2 py-1 rounded-md mr-1 transition-all"
+                          style={{ backgroundColor: "rgb(128, 41, 73)" }}
+                          onClick={() => editTransaction(tx)}
+                        >
+                          Edit
+                        </button>
+                        <button
                           className="text-white text-xs px-3 py-1 rounded-md transition-all"
                           style={{
                             backgroundColor: "rgb(128, 41, 73)",
@@ -1006,6 +1195,7 @@ export default function Payments() {
           </div>
         </div>
       </div>
+      <PaymentsTable />
     </div>
   );
 }

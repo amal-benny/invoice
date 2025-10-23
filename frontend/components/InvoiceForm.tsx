@@ -62,6 +62,13 @@ function fromCents(cents: number) {
   return cents / 100;
 }
 
+function formatDateForInput(d?: string) {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return "";
+  return dt.toISOString().slice(0, 10);
+}
+
 export default function InvoiceForm({
   onCreated,
   initialInvoice,
@@ -82,12 +89,12 @@ export default function InvoiceForm({
     (initialInvoice?.type as "INVOICE" | "QUOTE") || "QUOTE"
   );
   const [customerId, setCustomerId] = useState<number | undefined>(
-    initialInvoice?.id
-  );
+  initialInvoice?.customer?.id
+);
   const [dueDate, setDueDate] = useState<string>(initialInvoice?.dueDate || "");
   const [date, setDate] = useState<string>(
-    initialInvoice?.date || new Date().toISOString().slice(0, 10)
-  );
+  formatDateForInput(initialInvoice?.date ?? undefined)
+);
   const [items, setItems] = useState<Item[]>(
     initialInvoice?.items?.map((it: Item) => ({
       description: it.description,

@@ -139,7 +139,7 @@ model CompanySettings {
   stateName  String?    // NEW
   stateCode  String?
   createdAt  DateTime @default(now())
-  userId     Int      // link to the user
+  userId     Int       @unique 
   user       User     @relation(fields: [userId], references: [id])
 }
 

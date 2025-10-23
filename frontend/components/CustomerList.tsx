@@ -118,7 +118,6 @@ export default function CustomerList() {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const phoneRegex = /^\d{10}$/;
   const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/i; // PAN typical pattern
-  const gstRegex = /^[0-9]{2}[A-Z0-9]{13}$/i; // approximate GSTIN validation
   const stateCodeRegex = /^\d{1,2}$/; // typically 1-2 digit codes (adjust as needed)
 
   function validateField<K extends keyof CustomerForm>(key: K, value: CustomerForm[K]): string | undefined {
@@ -145,10 +144,7 @@ export default function CustomerList() {
         if (!panRegex.test(v)) return "PAN format seems invalid (e.g. AAAAA9999A).";
         return undefined;
 
-      case "gstNumber":
-        if (!v) return undefined; // optional
-        if (!gstRegex.test(v)) return "GSTIN format seems invalid (15 characters).";
-        return undefined;
+     
 
       case "stateCode":
         if (!v) return undefined; // optional
@@ -394,7 +390,7 @@ export default function CustomerList() {
               value={form.gstNumber}
               onChange={(e) => handleChange("gstNumber", e.target.value.toUpperCase())}
               onBlur={() => handleBlur("gstNumber")}
-              required
+              
             />
             <FieldError name="gstNumber" />
           </div>

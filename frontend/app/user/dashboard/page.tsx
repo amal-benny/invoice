@@ -45,33 +45,56 @@ export default function UserDashboard() {
     setUser(parsed);
 
     // Load settings from localStorage first
-    const savedSettings = localStorage.getItem("settings");
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    } else {
-      loadSettings();
-    }
-
-    loadSummary();
-    loadInvoices();
-  }, []);
-
-  async function loadSettings() {
+     const savedSettingsRaw = localStorage.getItem("settings");
+  if (savedSettingsRaw) {
     try {
-      const s = await authFetch("/api/settings");
-      if (s) {
-        const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
-        const updated = {
-          ...s,
-          logoPreview: s.logoPath ? `${API}${s.logoPath}` : null,
-        };
-        setSettings(updated);
-        localStorage.setItem("settings", JSON.stringify(updated));
+      const saved = JSON.parse(savedSettingsRaw);
+      // Ensure saved settings are for the current user
+      if (saved && (saved.userId === parsed.id || saved.userId === Number(parsed.id))) {
+        setSettings(saved);
+      } else {
+        // cached settings are for a different user -> fetch fresh
+        loadSettings();
       }
     } catch (err) {
-      console.error("Failed to load settings", err);
+      // corrupted cache -> fetch fresh
+      console.warn("Failed to parse cached settings, refreshing...", err);
+      loadSettings();
     }
+  } else {
+    // no cached settings -> fetch
+    loadSettings();
   }
+
+  loadSummary();
+  loadInvoices();
+}, []);
+
+  async function loadSettings() {
+  try {
+    const s = await authFetch("/api/settings");
+    if (s) {
+      const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+      const updated = {
+        ...s,
+        logoPreview: s.logoPath ? `${API}${s.logoPath}` : null,
+      };
+      setSettings(updated);
+      // persist the settings INCLUDING userId so we can validate cache on next login
+      localStorage.setItem("settings", JSON.stringify(updated));
+    } else {
+      // remove any stale settings
+      localStorage.removeItem("settings");
+      setSettings(null);
+    }
+  } catch (err) {
+    console.error("Failed to load settings", err);
+    // in case of error, remove stale cached settings to avoid showing wrong user's data
+    localStorage.removeItem("settings");
+    setSettings(null);
+  }
+}
+
 
   async function loadSummary() {
     try {
@@ -94,6 +117,7 @@ export default function UserDashboard() {
   function logout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("settings"); 
     router.push("/login");
   }
 
@@ -115,7 +139,7 @@ export default function UserDashboard() {
           {selected === "dashboard" && (
             <>
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Dashboard</h2>
+                <h2 className="text-xl font-semibold">Dashboard Summary</h2>
                 <button onClick={() => setSelected("invoice")} className="btn">
                   New Quotation
                 </button>

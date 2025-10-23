@@ -165,7 +165,7 @@ export default function InvoiceTable({
               placeholder="Search by Number, Customer or Date"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="border border-gray-300 rounded-full px-10 py-2 w-full focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
+              className="border border-gray-300 rounded-full px-10 py-2 w-full focus:outline-none focus:ring-2 focus:ring-rgb(128, 41, 73) transition-all"
             />
           </div>
 

@@ -5,22 +5,9 @@ import html2pdf from "html2pdf.js";
 import InvoiceForm from "./InvoiceForm";
 import type { Invoice } from "../src/types/invoice";
 
-function useTheme() {
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    return (localStorage.getItem("theme") as "light" | "dark") || "light";
-  });
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const root = window.document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-    localStorage.setItem("theme", theme);
-  }, [theme]);
 
-  return { theme, setTheme };
-}
+ 
 
 /* ---------- Types ---------- */
 
@@ -36,8 +23,6 @@ type InvoiceItem = {
   hsn?: string | null;
 };
 
-
-
 type CompanyDetails = {
   name?: string;
   address?: string;
@@ -46,7 +31,11 @@ type CompanyDetails = {
   [key: string]: unknown;
 };
 
-
+declare global {
+  interface Window {
+    updateInvoiceRefresh?: (invoiceId?: number | string) => Promise<void>;
+  }
+}
 
 /* --------------------------- */
 
@@ -62,21 +51,43 @@ export default function InlineInvoiceView({
   onBack?: () => void;
 }) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const { theme, setTheme } = useTheme();
   const company = (invoice?.company as CompanyDetails) || companyDetails || {};
   const componentRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    if (!invoiceId) return;
-    (async () => {
+    let mounted = true;
+
+    async function fetchInvoice() {
+      if (!invoiceId) return;
       try {
         const data = (await authFetch(`/api/invoices/${invoiceId}`)) as Invoice;
+        if (!mounted) return;
         setInvoice(data);
-      } catch {
+      } catch (e) {
+        if (!mounted) return;
+        console.error("Failed to fetch invoice:", e);
         setInvoice(null);
       }
-    })();
+    }
+
+    // initial fetch
+    fetchInvoice();
+
+    // expose a typed global refresh helper that reuses fetchInvoice
+    window.updateInvoiceRefresh = async (maybeId?: number | string) => {
+      // if a specific id is provided but it doesn't match this view, ignore the call
+      if (maybeId !== undefined && String(maybeId) !== String(invoiceId))
+        return;
+      await fetchInvoice();
+    };
+
+    return () => {
+      mounted = false;
+      try {
+        delete window.updateInvoiceRefresh;
+      } catch {}
+    };
   }, [invoiceId]);
 
   const handlePrint = (pageSize: "A4" | "A5" = "A4") => {
@@ -341,28 +352,8 @@ export default function InlineInvoiceView({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="px-3 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm flex items-center gap-2 shadow-sm hover:shadow-md transition"
-          >
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
-          {invoice.type === "QUOTE" && (
-            <button
-              onClick={async () => {
-                await authFetch(`/api/invoices/${invoice.id}/convert`, {
-                  method: "POST",
-                });
-                const d = (await authFetch(
-                  `/api/invoices/${invoice.id}`
-                )) as Invoice;
-                setInvoice(d);
-              }}
-              className="px-4 py-2 rounded-md bg-primary text-white font-semibold shadow hover:opacity-95 transition"
-            >
-              Convert to Invoice
-            </button>
-          )}
+          
+         
           <button
             onClick={() => setEditing(true)}
             className="px-4 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm shadow-sm hover:shadow-md transition"
@@ -506,41 +497,68 @@ export default function InlineInvoiceView({
         </div>
 
         {/* Summary */}
-        <div className="flex justify-end mt-6">
-          <div className="w-full md:w-1/3 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-700 border border-neutral-100 dark:border-neutral-600">
-            <div className="flex justify-between py-1 text-sm">
-              <span>Subtotal</span>
-              <span>
-                {invoice.currency} {invoice.subtotal}
-              </span>
+        {(() => {
+          // compute the values defensively (strings or missing fields)
+          const subtotalNum = Number(invoice.subtotal ?? 0);
+          const discountNum = Number(invoice.totalDiscount ?? 0);
+          const taxNum = Number(invoice.totalGST ?? 0);
+          const advanceNum = Number(invoice.advancePaid ?? 0);
+
+          // If your backend returns totalGST as a percent (e.g. 18), change this to:
+          // const taxAmount = subtotalNum * (taxNum / 100);
+          // But default here treats totalGST as absolute amount (same as your existing UI).
+          const taxAmount = taxNum;
+
+          const computedTotal = Math.max(
+            0,
+            subtotalNum - discountNum + taxAmount
+          );
+          const computedBalanceDue = Math.max(
+            0,
+            Number((computedTotal - advanceNum).toFixed(2))
+          );
+
+          return (
+            <div className="flex justify-end mt-6">
+              <div className="w-full md:w-1/3 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-700 border border-neutral-100 dark:border-neutral-600">
+                <div className="flex justify-between py-1 text-sm">
+                  <span>Subtotal</span>
+                  <span>
+                    {invoice.currency} {subtotalNum.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                  <span>Tax</span>
+                  <span>
+                    {invoice.currency} {taxAmount.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                  <span>Discount</span>
+                  <span>
+                    - {invoice.currency} {discountNum.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 text-sm">
+                  <span>Advance</span>
+                  <span>
+                    - {invoice.currency} {advanceNum.toFixed(2)}
+                  </span>
+                </div>
+                <hr className="my-3 border-neutral-200 dark:border-neutral-600" />
+                <div className="flex justify-between font-bold text-lg text-primary">
+                  <span>Balance Due</span>
+                  <span>
+                    {invoice.currency} {computedBalanceDue.toFixed(2)}
+                  </span>
+                </div>
+
+                {/* optional: show server total (kept as-is) */}
+                {/* <div className="text-xs text-gray-500 mt-2">Server total: {invoice.total}</div> */}
+              </div>
             </div>
-            <div className="flex justify-between py-1 text-sm">
-              <span>Tax</span>
-              <span>
-                {invoice.currency} {invoice.totalGST}
-              </span>
-            </div>
-            <div className="flex justify-between py-1 text-sm">
-              <span>Discount</span>
-              <span>
-                - {invoice.currency} {invoice.totalDiscount}
-              </span>
-            </div>
-            <div className="flex justify-between py-1 text-sm">
-              <span>Advance</span>
-              <span>
-                - {invoice.currency} {invoice.advancePaid}
-              </span>
-            </div>
-            <hr className="my-3 border-neutral-200 dark:border-neutral-600" />
-            <div className="flex justify-between font-bold text-lg text-primary">
-              <span>Balance Due</span>
-              <span>
-                {invoice.currency} {invoice.total}
-              </span>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Notes */}
         {(invoice.note || company.defaultNote) && (

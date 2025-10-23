@@ -200,9 +200,11 @@ router.get("/:id", auth, async (req, res) => {
 //
 // Edit invoice (update invoice fields and replace items) - only owner
 //
-// Edit invoice (update invoice fields and replace items) - only owner
+
 router.put("/:id", auth, async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid invoice ID" });
+
   const {
     type,
     customerId,
@@ -210,7 +212,8 @@ router.put("/:id", auth, async (req, res) => {
     remark,
     currency,
     items = [],
-    advancePaid: frontendAdvance = 0, // <-- global advance
+    advancePaid: frontendAdvance = 0,
+    note,
   } = req.body;
 
   try {
@@ -222,80 +225,92 @@ router.put("/:id", auth, async (req, res) => {
     if (existing.createdById !== req.user.id)
       return res.status(403).json({ message: "Not authorized" });
 
+    // Validate customerId safely
+    let parsedCustomerId = null;
+    if (customerId !== undefined && customerId !== null) {
+      parsedCustomerId = Number(customerId);
+      const customerExists = await prisma.customer.findUnique({
+        where: { id: parsedCustomerId },
+      });
+      if (!customerExists) {
+        return res.status(400).json({ message: "Invalid customerId" });
+      }
+    }
+
+    const parsedDueDate = dueDate ? new Date(dueDate) : existing.dueDate;
+    const parsedAdvance = frontendAdvance ? Number(frontendAdvance) : 0;
+
+    // Compute totals safely
     let subtotal = 0,
       totalGST = 0,
       totalDiscount = 0,
       advanceFromItems = 0;
 
-    for (const it of items) {
-      const qty = it.quantity || 1;
-      const price = parseFloat(it.price) || 0;
-      const discount = parseFloat(it.discount) || 0;
-      const advance = parseFloat(it.advance) || 0;
+    const safeItems = items.map((it) => ({
+      description: it.description || "",
+      category: it.category || null,
+      quantity: Number(it.quantity) || 1,
+      price: Number(it.price) || 0,
+      gstPercent: it.gstPercent !== undefined && it.gstPercent !== null ? Number(it.gstPercent) : null,
+      discount: it.discount !== undefined && it.discount !== null ? Number(it.discount) : null,
+      advance: it.advance !== undefined && it.advance !== null ? Number(it.advance) : 0,
+      remark: it.remark || null,
+      hsn: it.hsn || null,
+    }));
 
-      const lineBase = qty * price - discount;
-      subtotal += qty * price;
-      totalDiscount += discount;
-      totalGST += it.gstPercent
-        ? (lineBase * parseFloat(it.gstPercent)) / 100
-        : 0;
-      advanceFromItems += advance;
+    for (const it of safeItems) {
+      const lineBase = it.quantity * it.price - (it.discount || 0);
+      subtotal += it.quantity * it.price;
+      totalDiscount += it.discount || 0;
+      totalGST += it.gstPercent ? (lineBase * it.gstPercent) / 100 : 0;
+      advanceFromItems += it.advance || 0;
     }
 
-    const totalAdvance = advanceFromItems + parseFloat(frontendAdvance || 0);
+    const totalAdvance = advanceFromItems + parsedAdvance;
     const total = subtotal - totalDiscount + totalGST - totalAdvance;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const updatedInv = await tx.invoice.update({
+    const updatedInvoice = await prisma.$transaction(async (tx) => {
+      const inv = await tx.invoice.update({
         where: { id },
         data: {
           type: type || existing.type,
-          customerId: customerId || existing.customerId,
-          dueDate: dueDate ? new Date(dueDate) : existing.dueDate,
+          customerId: parsedCustomerId, // safe now
+          dueDate: parsedDueDate,
           remark: remark !== undefined ? remark : existing.remark,
           currency: currency || existing.currency,
-          note: req.body.note !== undefined ? req.body.note : existing.note,
+          note: note !== undefined ? note : existing.note,
           subtotal,
           totalGST,
           totalDiscount,
-          advancePaid: totalAdvance, // <-- save global + item advance
+          advancePaid: totalAdvance,
           total,
         },
       });
 
       // Replace items
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
-
-      if (items.length > 0) {
-        const createItems = items.map((it) => ({
-          invoiceId: id,
-          description: it.description || "",
-          category: it.category || null,
-          quantity: it.quantity || 1,
-          price: it.price || 0,
-          gstPercent: it.gstPercent || null,
-          discount: it.discount || null,
-          advance: it.advance || null,
-          remark: it.remark || null,
-          hsn: it.hsn || null,
-        }));
-        await tx.invoiceItem.createMany({ data: createItems });
+      if (safeItems.length > 0) {
+        await tx.invoiceItem.createMany({
+          data: safeItems.map((it) => ({ invoiceId: id, ...it })),
+        });
       }
 
-      return updatedInv;
+      return inv;
     });
 
     const invoiceWithItems = await prisma.invoice.findUnique({
-      where: { id: result.id },
+      where: { id: updatedInvoice.id },
       include: { items: true, customer: true, payments: true },
     });
 
     res.json(invoiceWithItems);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: err.message });
+    console.error("PUT /api/invoices/:id failed:", err);
+    res.status(500).json({ message: "Failed to update invoice", error: err.message });
   }
 });
+
+
 
 
 
