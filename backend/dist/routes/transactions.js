@@ -78,8 +78,12 @@ router.get("/", auth, async (req, res) => {
     const balances = await prisma.startingBalance.findMany({
         where: { createdById: req.user.id },
     });
-    let cashBalance = balances.filter(b => b.method === "Cash").reduce((a, b) => b.amount, 0);
-    let bankBalance = balances.filter(b => b.method === "Bank").reduce((a, b) => b.amount, 0);
+    const cashBalance = balances
+        .filter(b => b.method === "Cash")
+        .reduce((acc, b) => acc + Number(b.amount || 0), 0);
+    const bankBalance = balances
+        .filter(b => b.method === "Bank")
+        .reduce((acc, b) => acc + Number(b.amount || 0), 0);
     let runningBalanceCash = cashBalance;
     let runningBalanceBank = bankBalance;
     const txWithClosing = transactions.map(tx => {
@@ -109,6 +113,37 @@ router.post("/", auth, async (req, res) => {
         },
     });
     res.json(txn);
+});
+// Update transaction (PUT /:id)
+router.put("/:id", auth, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { type, category, amount, date, description, method, reference } = req.body;
+        // Basic validation (optional)
+        if (!id)
+            return res.status(400).json({ message: "Invalid id" });
+        const updated = await prisma.transaction.update({
+            where: { id },
+            data: {
+                type,
+                category,
+                amount: amount !== undefined ? parseFloat(amount) : undefined,
+                date: date ? new Date(date) : undefined,
+                description,
+                method,
+                reference,
+            },
+        });
+        res.json(updated);
+    }
+    catch (err) {
+        console.error("Failed to update transaction:", err);
+        // If update failed because record not found, Prisma throws — send 404
+        if (err.code === "P2025") {
+            return res.status(404).json({ message: "Transaction not found" });
+        }
+        res.status(500).json({ message: "Failed to update transaction" });
+    }
 });
 router.delete("/:id", auth, async (req, res) => {
     await prisma.transaction.delete({ where: { id: parseInt(req.params.id) } });
