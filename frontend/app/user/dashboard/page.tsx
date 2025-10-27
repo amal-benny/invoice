@@ -7,6 +7,14 @@ import { authFetch } from "../../../lib/api";
 // Types
 import type { Invoice, User, Settings, Stats, TabKey } from "@/src/types/invoice";
 
+type WindowMethod = "CASH" | "BANK" | "UPI" | "CARD";
+
+declare global {
+  interface Window {
+    updateDashboardIncome?: (method: WindowMethod, amount: number) => void;
+  }
+}
+
 // Dynamic imports with SSR disabled
 const Sidebar = dynamic(() => import("../../../components/Sidebar"), { ssr: false });
 const Topbar = dynamic(() => import("../../../components/Topbar"), { ssr: false });
@@ -123,6 +131,25 @@ export default function UserDashboard() {
 
   // Sidebar logo: uses saved logoPreview if exists
   const sidebarLogo = settings?.logoPreview;
+
+
+  // In UserDashboard (e.g. inside useEffect that runs once)
+useEffect(() => {
+  // If not defined already, create a safe implementation that queues updates
+  if (!window.updateDashboardIncome) {
+    window.updateDashboardIncome = (method: WindowMethod, amount: number) => {
+      try {
+        const raw = localStorage.getItem("paymentUpdates") ?? "[]";
+        const arr: { method: WindowMethod; amount: number; ts: number }[] = JSON.parse(raw);
+        arr.push({ method, amount, ts: Date.now() });
+        localStorage.setItem("paymentUpdates", JSON.stringify(arr));
+      } catch (e) {
+        console.warn("Failed to queue payment update", e);
+      }
+    };
+  }
+}, []);
+
 
   return (
     <div className="min-h-screen flex">

@@ -88,9 +88,7 @@ export default function Sidebar({
       </nav>
 
       {/* Footer */}
-      <div className="kv text-sm mt-6">
-        Logged role: <strong>{role}</strong>
-      </div>
+      
     </aside>
   );
 }

@@ -57,7 +57,19 @@ interface Stats {
   bankExpense: number;
   bankNet: number;
   bankClosing: number;
+  upiIncome?: number;
+  cardIncome?: number;
+  otherIncome?: number;
+  netProfit?: number;
 }
+
+declare global {
+  interface Window {
+    updateDashboardIncome?: (method: WindowMethod, amount: number) => void;
+  }
+}
+
+type WindowMethod = "CASH" | "BANK" | "UPI" | "CARD";
 
 
 // Helper to convert number to words (unchanged)
@@ -158,29 +170,24 @@ export default function Payments() {
   });
 
   const [stats, setStats] = useState<Stats>({
-    cashStarting: 0,
-    cashIncome: 0,
-    cashExpense: 0,
-    cashNet: 0,
-    cashClosing: 0,
-    bankStarting: 0,
-    bankIncome: 0,
-    bankExpense: 0,
-    bankNet: 0,
-    bankClosing: 0,
-  });
-
-const [, setSummary] = useState({
+  cashStarting: 0,
   cashIncome: 0,
+  cashExpense: 0,
+  cashNet: 0,
+  cashClosing: 0,
+  bankStarting: 0,
   bankIncome: 0,
+  bankExpense: 0,
+  bankNet: 0,
+  bankClosing: 0,
   upiIncome: 0,
   cardIncome: 0,
-  totalIncome: 0,
-  closingBalance: 0,
+  otherIncome: 0,
   netProfit: 0,
-  openingBalance: 0,  // if you have an opening balance
-  totalExpense: 0     // if you have total expense
 });
+
+
+
 
 
   const [downloadRange, setDownloadRange] = useState<{
@@ -273,13 +280,7 @@ const [, setSummary] = useState({
     }
   }
 
-  // IMPORTANT: when adding/updating transaction we:
-  // 1) build payload
-  // 2) call API
-  // 3) if server returned saved tx, use it, else create optimistic tx with id Date.now()
-  // 4) update transactions array deterministically (replace if found)
-  // 5) call calculateSummary with the new array (immediate update)
-  // 6) set state and re-sync with server (loadTransactions)
+  
   async function addTransaction() {
     try {
       const payload = {
@@ -393,38 +394,67 @@ const [, setSummary] = useState({
     });
   }
 
+
+
 useEffect(() => {
-  // Make this function available globally
-  window.updateDashboardIncome = (method: "CASH" | "BANK" | "UPI" | "CARD", amount: number) => {
-    setSummary(prev => {
-      // prev = { cashIncome, bankIncome, upiIncome, cardIncome, closingBalance, netProfit, ... }
-      let cashIncome = prev.cashIncome;
-      let bankIncome = prev.bankIncome;
-      let upiIncome = prev.upiIncome;
-      let cardIncome = prev.cardIncome;
-
-      if (method === "CASH") cashIncome += amount;
-      else if (method === "BANK") bankIncome += amount;
-      else if (method === "UPI") upiIncome += amount;
-      else if (method === "CARD") cardIncome += amount;
-
-      const totalIncome = cashIncome + bankIncome + upiIncome + cardIncome;
-      const closingBalance = prev.openingBalance + totalIncome - prev.totalExpense;
-      const netProfit = totalIncome - prev.totalExpense; // adjust if needed
-
-      return {
-        ...prev,
-        cashIncome,
-        bankIncome,
-        upiIncome,
-        cardIncome,
-        totalIncome,
-        closingBalance,
-        netProfit,
+  // define real handler that updates stats
+  window.updateDashboardIncome = (method: WindowMethod, amount: number) => {
+    setStats((prev) => {
+      const updated = { ...prev } as Stats & {
+        upiIncome?: number;
+        cardIncome?: number;
+        otherIncome?: number;
+        netProfit?: number;
       };
+
+      switch (method) {
+        case "CASH":
+          updated.cashIncome += amount;
+          updated.cashClosing += amount;
+          break;
+        case "BANK":
+          updated.bankIncome += amount;
+          updated.bankClosing += amount;
+          break;
+        case "UPI":
+          updated.upiIncome = (updated.upiIncome || 0) + amount;
+          break;
+        case "CARD":
+          updated.cardIncome = (updated.cardIncome || 0) + amount;
+          break;
+      }
+
+      updated.netProfit =
+        (updated.cashIncome || 0) +
+        (updated.bankIncome || 0) +
+        (updated.upiIncome || 0) +
+        (updated.cardIncome || 0) +
+        (updated.otherIncome || 0);
+
+      return updated;
     });
   };
+
+  // drain queued updates from localStorage (if any)
+  try {
+    const raw = localStorage.getItem("paymentUpdates");
+    if (raw) {
+      const arr: { method: WindowMethod; amount: number }[] = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length > 0) {
+        arr.forEach((u) => {
+          if (typeof window.updateDashboardIncome === "function") {
+            window.updateDashboardIncome(u.method, u.amount);
+          }
+        });
+      }
+      localStorage.removeItem("paymentUpdates");
+    }
+  } catch (e) {
+    console.warn("Failed to apply queued payment updates", e);
+  }
 }, []);
+
+
 
 
   // --- downloadExcel & printRow keep same types ---

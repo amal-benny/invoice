@@ -95,6 +95,7 @@ router.post("/", auth, async (req, res) => {
         include: { payments: true, items: true, customer: true },
       });
 
+
       return { payment: p, invoice: invoiceWithRelations };
     });
 
