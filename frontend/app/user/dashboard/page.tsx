@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { authFetch } from "../../../lib/api";
 
 // Types
-import type { Invoice, User, Settings, Stats, TabKey } from "@/src/types/invoice";
+import type { Invoice, User, Settings, TabKey } from "@/src/types/invoice";
 
 type WindowMethod = "CASH" | "BANK" | "UPI" | "CARD";
 
