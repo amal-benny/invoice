@@ -5,8 +5,9 @@ import "react-toastify/dist/ReactToastify.css";
 
 
 
+
 export const metadata = {
-  title: "Invoice Maker",
+  title: " Worqit Invoice Maker",
   description: "Admin & user dashboard"
 };
 
