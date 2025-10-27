@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { authFetch } from "../lib/api";
 import type { Invoicepay } from "@/src/types/invoice";
 
+
 type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card" | "Other";
 type WindowMethodType = "UPI" | "CASH" | "BANK" | "CARD";
 
@@ -173,6 +174,7 @@ const remaining = Number((total - existingAdvance).toFixed(2)); // 385-85=300
     }
   } catch (err) {
     setError("Payment failed: " + String(err));
+    
   } finally {
     setLoading(false);
   }

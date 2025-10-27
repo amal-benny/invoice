@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash, Save, X } from "lucide-react";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type Ledger = {
   id: number;
@@ -73,6 +75,7 @@ export default function PaymentLedgers() {
         setItems(updatedItems);
       } catch (err) {
         console.error("Failed to load ledgers", err);
+         toast.error("Failed to load ledgers: " + String(err));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -92,7 +95,7 @@ export default function PaymentLedgers() {
 
   async function createItem(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    if (!createValue.trim()) return alert("Category is required");
+    if (!createValue.trim()) return  toast.error("Category is required");
     setSaving(true);
     try {
       const created = await authFetch("/api/payment-ledgers", {
@@ -104,8 +107,9 @@ export default function PaymentLedgers() {
       if (created?.id) setItems((s) => [{ ...created, deleted: false }, ...s]);
       setCreateValue("");
       setCreating(false);
+      toast.success("Category created");
     } catch (err) {
-      alert("Create failed");
+      toast.error("Create failed: " + String(err));
       console.error(err);
     } finally {
       setSaving(false);
@@ -120,7 +124,7 @@ export default function PaymentLedgers() {
   }
 
   async function saveEdit(id: number) {
-    if (!editValue.trim()) return alert("Category is required");
+    if (!editValue.trim()) return toast.error("Category is required");
     setSaving(true);
     try {
       const updated = await authFetch(`/api/payment-ledgers/${id}`, {
@@ -131,8 +135,9 @@ export default function PaymentLedgers() {
 
       setItems((s) => s.map((it) => (it.id === id ? { ...updated, deleted: it.deleted } : it)));
       setEditingId(null);
+       toast.success("Category updated");
     } catch (err) {
-      alert("Update failed");
+       toast.error("Update failed: " + String(err));
       console.error(err);
     } finally {
       setSaving(false);
@@ -284,6 +289,7 @@ export default function PaymentLedgers() {
           <button onClick={undoDelete} className="px-2 py-1 rounded bg-white text-black ml-2">Undo</button>
         </div>
       )}
+       <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </div>
   );
 }

@@ -13,6 +13,9 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import type { Settings } from "@/src/types/invoice";
 import PaymentsTable from "./PaymentsTable";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 
 type TransactionType = "INCOME" | "EXPENSE";
 

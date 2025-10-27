@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { authFetch } from "../lib/api";
 import type { Invoice } from "../src/types/invoice";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type Item = {
   description: string;
@@ -176,14 +178,14 @@ export default function InvoiceForm({
           }
         }
       } catch (err) {
-        console.error("failed to load", err);
+        toast.error("Failed to load : " + err);
       }
 
       try {
         const c = (await authFetch("/api/customers")) as Customer[] | null;
         setCustomers(c || []);
       } catch (err) {
-        console.error("failed to load", err);
+         toast.error("Failed to load : " + err);
       }
 
       try {
@@ -192,7 +194,7 @@ export default function InvoiceForm({
           | null;
         setCategories(cats || []);
       } catch (err) {
-        console.error("failed to load", err);
+         toast.error("Failed to load : " + err);
       }
     })();
   }, []);
@@ -361,7 +363,7 @@ export default function InvoiceForm({
         }
       }
     } catch (err) {
-      alert("Failed to save: " + JSON.stringify(err));
+       toast.error("Failed to save: " + JSON.stringify(err));
     } finally {
       setLoading(false);
     }
@@ -849,6 +851,7 @@ export default function InvoiceForm({
           />
         </div>
       </form>
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </>
   );
 }

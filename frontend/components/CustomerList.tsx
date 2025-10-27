@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash } from "lucide-react";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 // Define types
 export type Payment = {
@@ -69,7 +71,7 @@ export default function CustomerList() {
       const data = (await authFetch("/api/customers")) as Customer[];
       setCustomers(data || []);
     } catch (err) {
-      alert("Failed to load customers: " + err);
+      toast.error("Failed to load customers: " + err);
     } finally {
       setLoading(false);
     }
@@ -240,12 +242,14 @@ export default function CustomerList() {
           body: JSON.stringify(form),
           headers: { "Content-Type": "application/json" },
         });
+         toast.success("Customer updated successfully!");
       } else {
         await authFetch("/api/customers", {
           method: "POST",
           body: JSON.stringify(form),
           headers: { "Content-Type": "application/json" },
         });
+        toast.success("Customer created successfully!");
       }
       resetForm();
       load();
@@ -263,7 +267,7 @@ export default function CustomerList() {
       if (editing === id) resetForm();
       load();
     } catch (err) {
-      alert("Delete failed: " + err);
+      toast.error("Delete failed: " + err);
     }
   }
 
@@ -519,6 +523,7 @@ export default function CustomerList() {
           </div>
         )}
       </div>
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </div>
   );
 }
