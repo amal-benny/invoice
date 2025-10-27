@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash, Save, X } from "lucide-react";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 type QuotationCategory = {
@@ -449,7 +449,7 @@ export default function QuotationCategories() {
           </button>
         </div>
       )}
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+      
     </div>
   );
 }

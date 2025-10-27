@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash, Save, X } from "lucide-react";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 type Ledger = {
@@ -289,7 +289,7 @@ export default function PaymentLedgers() {
           <button onClick={undoDelete} className="px-2 py-1 rounded bg-white text-black ml-2">Undo</button>
         </div>
       )}
-       <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+       
     </div>
   );
 }

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { authFetch } from "../lib/api";
 import type { Invoice } from "../src/types/invoice";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 type Item = {
@@ -851,7 +851,7 @@ export default function InvoiceForm({
           />
         </div>
       </form>
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+      
     </>
   );
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import QuotationCategories from "../components/QuotationCategories";
 import PaymentLedgers from "../components/PaymentLedgers";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 type Settings = {
@@ -234,7 +234,7 @@ export default function SettingsForm({
 
       <QuotationCategories />
       <PaymentLedgers />
-       <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+      
     </>
   );
 }

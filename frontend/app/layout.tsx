@@ -1,5 +1,7 @@
 import "./globals.css";
 import { ReactNode } from "react";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 
 
@@ -14,6 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <main className="min-h-screen">
           {children}
+          <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
         </main>
       </body>
     </html>

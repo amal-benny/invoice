@@ -13,7 +13,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import type { Settings } from "@/src/types/invoice";
 import PaymentsTable from "./PaymentsTable";
-import { toast, ToastContainer } from "react-toastify";
+import { toast} from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 
@@ -1237,7 +1237,7 @@ useEffect(() => {
         </div>
       </div>
       <PaymentsTable />
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+     
     </div>
   );
 }

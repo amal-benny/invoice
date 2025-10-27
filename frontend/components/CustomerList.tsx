@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash } from "lucide-react";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 // Define types
@@ -523,7 +523,7 @@ export default function CustomerList() {
           </div>
         )}
       </div>
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+      
     </div>
   );
 }
