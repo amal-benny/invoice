@@ -127,10 +127,10 @@ export default function InvoiceForm({
   );
   const [globalRemark] = useState<string>(initialInvoice?.remark || "");
 
-  const [advancePayment, setAdvancePayment] = useState<number>(
+  const [advancePayment, ] = useState<number>(
     initialInvoice?.advancePaid || 0
   );
-  const [advanceMethod, setAdvanceMethod] = useState<string>("Cash");
+  const [advanceMethod,] = useState<string>("Cash");
 
   const [loading, setLoading] = useState(false);
 
