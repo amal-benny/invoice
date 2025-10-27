@@ -215,6 +215,7 @@ export default function Payments() {
       if (Array.isArray(data)) setLedgers(data);
     } catch (err) {
       console.error("Failed to load ledgers", err);
+       toast.error("Failed to load ledgers: " + String(err));
     }
   }
 
@@ -232,6 +233,7 @@ export default function Payments() {
       setNewBalance(existingBalance ? existingBalance.amount : 0);
     } catch (err) {
       console.error("Failed to load balances", err);
+      toast.error("Failed to load balances: " + String(err));
     }
   }
 
@@ -252,6 +254,7 @@ export default function Payments() {
       setTransactions(normalized);
     } catch (err) {
       console.error("Failed to load transactions", err);
+      toast.error("Failed to load transactions: " + String(err));
     }
   }
 
@@ -263,14 +266,16 @@ export default function Payments() {
         await authFetch(`/api/transactions/balance/${editingBalance.id}`, {
           method: "PUT",
           body: JSON.stringify({ amount: newBalance, method: newMethod }),
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },  
         });
+        toast.success("update transaction balance successfully");
       } else {
         await authFetch("/api/transactions/balance", {
           method: "POST",
           body: JSON.stringify({ amount: newBalance, method: newMethod }),
           headers: { "Content-Type": "application/json" },
         });
+        toast.success("add transaction balance successfully");
       }
     } catch (err) {
       console.error("Failed to save balance", err);
@@ -300,12 +305,14 @@ export default function Payments() {
           body: JSON.stringify(payload),
           headers: { "Content-Type": "application/json" },
         });
+        toast.success("update transaction successfully");
       } else {
         saved = await authFetch("/api/transactions", {
           method: "POST",
           body: JSON.stringify(payload),
           headers: { "Content-Type": "application/json" },
         });
+        toast.success("add transaction successfully");
       }
 
       const txToUse: Transaction =
@@ -336,6 +343,7 @@ export default function Payments() {
       calculateSummary(newTxs);
     } catch (err) {
       console.error("Failed to add/update transaction", err);
+      toast.error("Failed to add/update transaction");
     } finally {
       // Reset form and editing state
       setTxnForm({
@@ -1229,6 +1237,7 @@ useEffect(() => {
         </div>
       </div>
       <PaymentsTable />
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </div>
   );
 }

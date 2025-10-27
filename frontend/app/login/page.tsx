@@ -1,6 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 interface User {
   id: number;
@@ -35,6 +37,7 @@ export default function LoginPage() {
           body: JSON.stringify({ email, password }),
         }
       );
+     
 
       const data: LoginResponse = await res.json();
 
@@ -45,12 +48,13 @@ export default function LoginPage() {
 
       if (data.user.role === "ADMIN") router.push("/admin/dashboard");
       else router.push("/user/dashboard");
+      toast.success("Login successful!");
     } catch (err: unknown) {
       // properly handle unknown type
       if (err instanceof Error) {
-        alert("Login failed: " + err.message);
+        toast.error("Login failed: " + err.message);
       } else {
-        alert("Login failed: " + String(err));
+        toast.error("Login failed: " + String(err));
       }
     } finally {
       setLoading(false);
@@ -117,6 +121,7 @@ export default function LoginPage() {
           </button>
         </form>
       </div>
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </div>
   );
 }

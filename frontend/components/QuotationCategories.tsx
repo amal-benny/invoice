@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { authFetch } from "../lib/api";
 import { Edit, Trash, Save, X } from "lucide-react";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type QuotationCategory = {
   id: number;
@@ -72,6 +74,7 @@ export default function QuotationCategories() {
       localStorage.setItem(computedUserKey, JSON.stringify(next));
     } catch (err) {
       console.error("Failed to persist deleted ids", err);
+      toast.error("Failed to persist deleted ids" + String(err));
     }
   }
 
@@ -136,8 +139,9 @@ export default function QuotationCategories() {
 
       setCreateForm({ category: "", description: "", hsn: "", price: "" });
       setCreating(false);
+      toast.success("create quotation category successfully");
     } catch (err) {
-      alert("Create failed");
+      toast.error("Create failed");
       console.error(err);
     } finally {
       setSaving(false);
@@ -174,8 +178,9 @@ export default function QuotationCategories() {
         s.map((it) => (it.id === id ? { ...updated, deleted: it.deleted } : it))
       );
       setEditingId(null);
+      toast.success("update quotation category successfully");
     } catch (err) {
-      alert("Update failed");
+      toast.error("Update failed");
       console.error(err);
     } finally {
       setSaving(false);
@@ -444,6 +449,7 @@ export default function QuotationCategories() {
           </button>
         </div>
       )}
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </div>
   );
 }

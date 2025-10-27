@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import QuotationCategories from "../components/QuotationCategories";
 import PaymentLedgers from "../components/PaymentLedgers";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type Settings = {
   id?: number;
@@ -71,9 +73,11 @@ export default function SettingsForm({
               : null;
           setLogoPreview(previewUrl);
           onSettingsUpdate?.({ ...s, logoPreview: previewUrl });
+          toast.success("Settings loaded successfully");
         }
       } catch (err) {
         console.error("Failed to load settings", err);
+        toast.error("Failed to load settings: " + String(err));
       }
     })();
   }, []);
@@ -112,7 +116,7 @@ export default function SettingsForm({
       setSettings(res);
       setLogoPreview(logoUrl);
       onSettingsUpdate?.({ ...res, logoPreview: logoUrl });
-      alert("Settings saved successfully!");
+      toast.success("Settings saved successfully!");
     } catch (err) {
       const message =
         err instanceof Error
@@ -120,7 +124,7 @@ export default function SettingsForm({
           : typeof err === "string"
           ? err
           : "An unknown error occurred";
-      alert("Save failed: " + message);
+      toast.error("Save failed: " + message);
     } finally {
       setLoading(false);
     }
@@ -230,6 +234,7 @@ export default function SettingsForm({
 
       <QuotationCategories />
       <PaymentLedgers />
+       <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </>
   );
 }
