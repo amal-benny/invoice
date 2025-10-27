@@ -74,7 +74,7 @@ export default function UserDashboard() {
     loadSettings();
   }
 
-  loadSummary();
+  // loadSummary();
   loadInvoices();
 }, []);
 
@@ -104,14 +104,14 @@ export default function UserDashboard() {
 }
 
 
-  async function loadSummary() {
-    try {
-      const s = await authFetch("/api/reports/summary");
-      setStats(s);
-    } catch (err) {
-       console.error("Failed to load ", err);
-    }
-  }
+  // async function loadSummary() {
+  //   try {
+  //     const s = await authFetch("/api/reports/summary");
+  //     setStats(s);
+  //   } catch (err) {
+  //      console.error("Failed to load ", err);
+  //   }
+  // }
 
   async function loadInvoices() {
     try {
@@ -209,7 +209,7 @@ useEffect(() => {
               onCreated={(inv) => {
                 setViewInvoiceId(inv?.id);
                 setSelected("invoiceview");
-                loadSummary();
+                // loadSummary();
                 loadInvoices();
                 setEditInvoice(null);
               }}
