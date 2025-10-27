@@ -73,7 +73,7 @@ export default function SettingsForm({
               : null;
           setLogoPreview(previewUrl);
           onSettingsUpdate?.({ ...s, logoPreview: previewUrl });
-          toast.success("Settings loaded successfully");
+          
         }
       } catch (err) {
         console.error("Failed to load settings", err);
