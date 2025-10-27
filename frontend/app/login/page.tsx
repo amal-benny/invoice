@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 interface User {
@@ -121,7 +121,7 @@ export default function LoginPage() {
           </button>
         </form>
       </div>
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
+      
     </div>
   );
 }
