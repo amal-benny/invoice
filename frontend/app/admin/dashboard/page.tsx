@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { authFetch } from "../../../lib/api";
 
 // Types
-import type { Invoice, User, Settings, Stats, TabKey } from "@/src/types/invoice";
+import type { Invoice, User, Settings, TabKey } from "@/src/types/invoice";
 
 // Dynamic imports (disable SSR for browser-only components)
 const Sidebar = dynamic(() => import("../../../components/Sidebar"), { ssr: false });
@@ -26,7 +26,7 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [selected, setSelected] = useState<TabKey>("dashboard");
   const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
-  const [stats, setStats] = useState<Stats | null>(null);
+  
   const [viewInvoiceId, setViewInvoiceId] = useState<number | undefined>(
     undefined
   );
@@ -48,7 +48,6 @@ export default function AdminDashboard() {
     }
     setUser(parsed);
     loadSettings();
-    loadSummary();
     loadInvoices();
   }, []);
 
@@ -61,14 +60,7 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadSummary() {
-    try {
-      const s = await authFetch("/api/reports/summary");
-      setStats(s);
-    } catch (err) {
-       console.error("Failed to load ", err);
-    }
-  }
+ 
 
   async function loadInvoices() {
     try {
@@ -154,7 +146,7 @@ export default function AdminDashboard() {
                 // show the created invoice in the same tab area
                 setViewInvoiceId(inv?.id);
                 setSelected("invoiceview");
-                loadSummary(); // refresh summary
+                 // refresh summary
                 loadInvoices();
                 setEditInvoice(null);
               }}
@@ -197,7 +189,7 @@ export default function AdminDashboard() {
           {selected === "reports" && (
             <div className="card">
               <h3 className="font-semibold">Reports</h3>
-              <pre>{JSON.stringify(stats, null, 2)}</pre>
+              <pre>{JSON.stringify( null)}</pre>
             </div>
           )}
         </div>
