@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+// ---------------- Types ---------------- //
 type Invoice = {
   id: number;
   invoiceNumber: string;
@@ -39,6 +40,7 @@ type Transaction = {
   date: string;
 };
 
+// ---------------- Helpers ---------------- //
 function getDateRange(type: "today" | "week" | "month") {
   const now = new Date();
   switch (type) {
@@ -54,6 +56,7 @@ function getDateRange(type: "today" | "week" | "month") {
   }
 }
 
+// ---------------- Component ---------------- //
 export default function Reports() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -76,9 +79,11 @@ export default function Reports() {
     }
   }
 
-  // --- INVOICE REPORT ---
+  // ---------------- Reports ---------------- //
   const invoiceReport = useMemo(() => {
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
+    if (!invoices.length) return types.map((period) => ({ period, count: 0 }));
+
     return types.map((type) => {
       const [start, end] = getDateRange(type);
       const count = invoices.filter((inv) => {
@@ -89,9 +94,11 @@ export default function Reports() {
     });
   }, [invoices]);
 
-  // --- CUSTOMER REPORT ---
   const customerReport = useMemo(() => {
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
+    if (!customers.length)
+      return types.map((period) => ({ period, total: 0, paid: 0, unpaid: 0 }));
+
     return types.map((type) => {
       const [start, end] = getDateRange(type);
       const filteredCustomers = customers.filter((c) => {
@@ -113,32 +120,48 @@ export default function Reports() {
     });
   }, [customers]);
 
-  // --- STATUS REPORT ---
   const statusReport = useMemo(() => {
-    const statusTypes: Invoice["status"][] = ["PAID", "UNPAID", "PENDING", "PARTIAL"];
-    return statusTypes.map((status) => ({
+    const statuses: Invoice["status"][] = [
+      "PAID",
+      "UNPAID",
+      "PENDING",
+      "PARTIAL",
+    ];
+    if (!invoices.length)
+      return statuses.map((status) => ({ name: status, value: 0 }));
+
+    return statuses.map((status) => ({
       name: status,
       value: invoices.filter((inv) => inv.status === status).length,
     }));
   }, [invoices]);
 
-  // --- TRANSACTION REPORT ---
   const transactionReport = useMemo(() => {
     const types: ("today" | "week" | "month")[] = ["today", "week", "month"];
+    if (!transactions.length)
+      return types.map((period) => ({ period, income: 0, expense: 0 }));
+
     return types.map((type) => {
       const [start, end] = getDateRange(type);
       const filtered = transactions.filter((tx) => {
         const d = new Date(tx.date);
         return d >= start && d <= end;
       });
-      const income = filtered.filter((tx) => tx.type === "INCOME").reduce((a, t) => a + t.amount, 0);
-      const expense = filtered.filter((tx) => tx.type === "EXPENSE").reduce((a, t) => a + t.amount, 0);
+
+      const income = filtered
+        .filter((tx) => tx.type === "INCOME")
+        .reduce((a, t) => a + t.amount, 0);
+      const expense = filtered
+        .filter((tx) => tx.type === "EXPENSE")
+        .reduce((a, t) => a + t.amount, 0);
+
       return { period: type, income, expense };
     });
   }, [transactions]);
 
   const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 
+  // ---------------- Render ---------------- //
   return (
     <div className="p-4 space-y-6">
       <h2 className="text-2xl font-bold mb-4">Reports</h2>
@@ -146,7 +169,9 @@ export default function Reports() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Invoice Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
-          <h3 className="font-semibold mb-2 text-gray-700">Invoices (Today/Week/Month)</h3>
+          <h3 className="font-semibold mb-2 text-gray-700">
+            Invoices (Today / Week / Month)
+          </h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={invoiceReport}>
               <XAxis dataKey="period" />
@@ -156,11 +181,18 @@ export default function Reports() {
               <Bar dataKey="count" fill="#0088FE" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          {!invoices.length && (
+            <p className="text-center text-gray-400 mt-2 text-sm">
+              No invoices available yet.
+            </p>
+          )}
         </div>
 
         {/* Customer Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
-          <h3 className="font-semibold mb-2 text-gray-700">Customers (Added / Paid / Unpaid)</h3>
+          <h3 className="font-semibold mb-2 text-gray-700">
+            Customers (Added / Paid / Unpaid)
+          </h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={customerReport}>
               <XAxis dataKey="period" />
@@ -172,6 +204,11 @@ export default function Reports() {
               <Bar dataKey="unpaid" stackId="a" fill="#FF8042" />
             </BarChart>
           </ResponsiveContainer>
+          {!customers.length && (
+            <p className="text-center text-gray-400 mt-2 text-sm">
+              No customers added yet.
+            </p>
+          )}
         </div>
 
         {/* Status Report */}
@@ -187,18 +224,28 @@ export default function Reports() {
                 outerRadius={80}
               >
                 {statusReport.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                  />
                 ))}
               </Pie>
               <Tooltip />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
+          {!invoices.length && (
+            <p className="text-center text-gray-400 mt-2 text-sm">
+              No invoice data available.
+            </p>
+          )}
         </div>
 
         {/* Transaction Report */}
         <div className="card p-4 shadow-md bg-white rounded-lg">
-          <h3 className="font-semibold mb-2 text-gray-700">Transactions (Income / Expense)</h3>
+          <h3 className="font-semibold mb-2 text-gray-700">
+            Transactions (Income / Expense)
+          </h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={transactionReport}>
               <XAxis dataKey="period" />
@@ -209,6 +256,11 @@ export default function Reports() {
               <Bar dataKey="expense" fill="#FF8042" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          {!transactions.length && (
+            <p className="text-center text-gray-400 mt-2 text-sm">
+              No transaction records yet.
+            </p>
+          )}
         </div>
       </div>
     </div>
