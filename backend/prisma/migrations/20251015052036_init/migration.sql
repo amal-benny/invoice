@@ -20,8 +20,13 @@ CREATE TABLE `Customer` (
     `email` VARCHAR(191) NULL,
     `phone` VARCHAR(191) NULL,
     `address` VARCHAR(191) NULL,
+    `stateName` VARCHAR(191) NULL,
+    `stateCode` VARCHAR(191) NULL,
     `status` ENUM('PAID', 'UNPAID', 'PARTIAL') NOT NULL DEFAULT 'UNPAID',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `createdById` INTEGER NOT NULL,
+    `panNumber` VARCHAR(191) NULL,
+    `gstNumber` VARCHAR(191) NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -40,6 +45,7 @@ CREATE TABLE `Invoice` (
     `totalGST` DOUBLE NOT NULL DEFAULT 0,
     `advancePaid` DOUBLE NOT NULL DEFAULT 0,
     `total` DOUBLE NOT NULL DEFAULT 0,
+    `note` VARCHAR(191) NULL,
     `status` ENUM('PENDING', 'PAID', 'PARTIAL', 'OVERDUE', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
     `remark` VARCHAR(191) NULL,
     `currency` VARCHAR(191) NOT NULL DEFAULT 'INR',
@@ -47,6 +53,14 @@ CREATE TABLE `Invoice` (
 
     UNIQUE INDEX `Invoice_invoiceNumber_key`(`invoiceNumber`),
     PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `InvoiceSequence` (
+    `year` INTEGER NOT NULL,
+    `last` INTEGER NOT NULL DEFAULT 0,
+
+    PRIMARY KEY (`year`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
@@ -61,6 +75,7 @@ CREATE TABLE `InvoiceItem` (
     `discount` DOUBLE NULL,
     `advance` DOUBLE NULL,
     `remark` VARCHAR(191) NULL,
+    `hsn` VARCHAR(191) NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -73,6 +88,7 @@ CREATE TABLE `Payment` (
     `amount` DOUBLE NOT NULL,
     `date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `note` VARCHAR(191) NULL,
+    `createdById` INTEGER NOT NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -84,12 +100,70 @@ CREATE TABLE `CompanySettings` (
     `address` VARCHAR(191) NULL,
     `contact` VARCHAR(191) NULL,
     `gstNumber` VARCHAR(191) NULL,
+    `panNumber` VARCHAR(191) NULL,
+    `taxPercent` DOUBLE NULL,
+    `taxType` VARCHAR(191) NULL,
     `currency` VARCHAR(191) NOT NULL DEFAULT 'INR',
     `logoPath` VARCHAR(191) NULL,
+    `stateName` VARCHAR(191) NULL,
+    `stateCode` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `userId` INTEGER NOT NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `Transaction` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `type` VARCHAR(191) NOT NULL,
+    `category` VARCHAR(191) NOT NULL,
+    `amount` DOUBLE NOT NULL,
+    `date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `description` VARCHAR(191) NULL,
+    `method` VARCHAR(191) NOT NULL,
+    `reference` VARCHAR(191) NULL,
+    `createdById` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `StartingBalance` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `amount` DOUBLE NOT NULL,
+    `method` VARCHAR(191) NOT NULL,
+    `date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `createdById` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `QuotationCategory` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `category` VARCHAR(191) NOT NULL,
+    `description` VARCHAR(191) NULL,
+    `hsn` VARCHAR(191) NULL,
+    `price` DOUBLE NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `createdById` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `PaymentLedger` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `category` VARCHAR(191) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `createdById` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- AddForeignKey
+ALTER TABLE `Customer` ADD CONSTRAINT `Customer_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `Invoice` ADD CONSTRAINT `Invoice_customerId_fkey` FOREIGN KEY (`customerId`) REFERENCES `Customer`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
@@ -102,3 +176,21 @@ ALTER TABLE `InvoiceItem` ADD CONSTRAINT `InvoiceItem_invoiceId_fkey` FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE `Payment` ADD CONSTRAINT `Payment_invoiceId_fkey` FOREIGN KEY (`invoiceId`) REFERENCES `Invoice`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `Payment` ADD CONSTRAINT `Payment_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CompanySettings` ADD CONSTRAINT `CompanySettings_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `Transaction` ADD CONSTRAINT `Transaction_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `StartingBalance` ADD CONSTRAINT `StartingBalance_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `QuotationCategory` ADD CONSTRAINT `QuotationCategory_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `PaymentLedger` ADD CONSTRAINT `PaymentLedger_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

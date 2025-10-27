@@ -20,7 +20,6 @@ type Settings = {
 };
 
 export default function SettingsForm({
-  
   onSettingsUpdate,
 }: {
   initialSettings?: Settings | null;
@@ -45,11 +44,10 @@ export default function SettingsForm({
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ALWAYS fetch current user's settings on mount (so each user sees their own)
+  // Load user settings
   useEffect(() => {
     (async () => {
       try {
-        // use authFetch which should add Authorization header / cookie
         const s = (await authFetch("/api/settings")) as Settings | null;
         if (s) {
           setSettings(s);
@@ -62,14 +60,9 @@ export default function SettingsForm({
             currency: s.currency || "INR",
             stateName: s.stateName || "",
             stateCode: s.stateCode || "",
-            taxPercent:
-              s.taxPercent !== undefined && s.taxPercent !== null
-                ? String(s.taxPercent)
-                : "",
+            taxPercent: s.taxPercent ? String(s.taxPercent) : "",
             taxType: s.taxType || "GST",
           });
-
-          // server may return either absolute URL or path like "/uploads/..."
           const previewUrl =
             s.logoPath && s.logoPath.startsWith("http")
               ? s.logoPath
@@ -78,10 +71,6 @@ export default function SettingsForm({
               : null;
           setLogoPreview(previewUrl);
           onSettingsUpdate?.({ ...s, logoPreview: previewUrl });
-        } else {
-          // no settings yet for this user
-          setSettings(null);
-          setLogoPreview(null);
         }
       } catch (err) {
         console.error("Failed to load settings", err);
@@ -89,29 +78,15 @@ export default function SettingsForm({
     })();
   }, []);
 
-  // notify parent when form or logo changes
-  useEffect(() => {
-    const updated = { ...settings, ...form, logoPreview };
-    onSettingsUpdate?.(updated as Settings & { logoPreview?: string | null });
-  }, [form, logoPreview]);
-
   function handleLogoChange(file: File | null) {
     setLogoFile(file);
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        setLogoPreview(reader.result as string);
-        onSettingsUpdate?.({
-          ...settings,
-          ...form,
-          logoPreview: reader.result as string,
-        });
-      };
+      reader.onload = () => setLogoPreview(reader.result as string);
       reader.readAsDataURL(file);
     } else {
       const url = settings?.logoPath ? `${API}${settings.logoPath}` : null;
       setLogoPreview(url);
-      onSettingsUpdate?.({ ...settings, ...form, logoPreview: url });
     }
   }
 
@@ -119,23 +94,10 @@ export default function SettingsForm({
     e.preventDefault();
     setLoading(true);
     const fd = new FormData();
-    fd.append("name", form.name);
-    fd.append("address", form.address);
-    fd.append("contact", form.contact);
-    fd.append("gstNumber", form.gstNumber);
-    fd.append("panNumber", form.panNumber);
-    fd.append("currency", form.currency);
-    fd.append("stateName", form.stateName);
-    fd.append("stateCode", form.stateCode);
-
-    if (form.taxPercent) fd.append("taxPercent", form.taxPercent);
-    if (form.taxType) fd.append("taxType", form.taxType);
+    Object.entries(form).forEach(([k, v]) => fd.append(k, v));
     if (logoFile) fd.append("logo", logoFile);
 
     try {
-      // authFetch wrapper may not accept FormData directly depending on implementation.
-      // If authFetch wraps fetch and accepts (url, options) it should work.
-      // Otherwise, set Authorization header here as fallback:
       const token = localStorage.getItem("token") || "";
       const raw = await fetch(`${API}/api/settings`, {
         method: "POST",
@@ -143,24 +105,22 @@ export default function SettingsForm({
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
-      if (!raw.ok) {
-        const text = await raw.text();
-        throw new Error(text || `HTTP ${raw.status}`);
-      }
+      if (!raw.ok) throw new Error(await raw.text());
+
       const res: Settings = await raw.json();
+      const logoUrl = res.logoPath ? `${API}${res.logoPath}` : null;
       setSettings(res);
-      setLogoPreview(res.logoPath ? `${API}${res.logoPath}` : null);
-      onSettingsUpdate?.({
-        ...res,
-        logoPreview: res.logoPath ? `${API}${res.logoPath}` : null,
-      });
+      setLogoPreview(logoUrl);
+      onSettingsUpdate?.({ ...res, logoPreview: logoUrl });
       alert("Settings saved successfully!");
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        alert("Save failed: " + err.message);
-      } else {
-        alert("Save failed");
-      }
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+          ? err
+          : "An unknown error occurred";
+      alert("Save failed: " + message);
     } finally {
       setLoading(false);
     }
@@ -197,7 +157,6 @@ export default function SettingsForm({
             placeholder="GST Number"
             value={form.gstNumber}
             onChange={(e) => setForm({ ...form, gstNumber: e.target.value })}
-            
           />
           <input
             className="input"
@@ -220,7 +179,6 @@ export default function SettingsForm({
             onChange={(e) => setForm({ ...form, stateCode: e.target.value })}
             required
           />
-
           <select
             className="input"
             value={form.taxType}
@@ -231,7 +189,6 @@ export default function SettingsForm({
             <option value="VAT">VAT</option>
             <option value="SalesTax">Sales Tax</option>
           </select>
-
           <input
             className="input"
             type="number"
@@ -251,7 +208,6 @@ export default function SettingsForm({
             <option value="USD">USD</option>
             <option value="EUR">EUR</option>
           </select>
-
           <div>
             <label className="kv">Logo</label>
             <input
@@ -264,7 +220,6 @@ export default function SettingsForm({
             )}
           </div>
           <div />
-
           <div className="col-span-2 flex justify-end">
             <button className="btn" type="submit" disabled={loading}>
               {loading ? "Saving..." : "Save Settings"}
