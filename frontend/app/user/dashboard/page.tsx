@@ -34,7 +34,6 @@ export default function UserDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [selected, setSelected] = useState<TabKey>("dashboard");
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [, setStats] = useState<Stats | null>(null);
   const [viewInvoiceId, setViewInvoiceId] = useState<number | undefined>(undefined);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
