@@ -104,15 +104,23 @@ export default function SettingsForm({
         body: fd,
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
+
       if (!raw.ok) throw new Error(await raw.text());
+
       const res: Settings = await raw.json();
       const logoUrl = res.logoPath ? `${API}${res.logoPath}` : null;
       setSettings(res);
       setLogoPreview(logoUrl);
       onSettingsUpdate?.({ ...res, logoPreview: logoUrl });
       alert("Settings saved successfully!");
-    } catch (err: any) {
-      alert("Save failed: " + err.message);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+          ? err
+          : "An unknown error occurred";
+      alert("Save failed: " + message);
     } finally {
       setLoading(false);
     }
