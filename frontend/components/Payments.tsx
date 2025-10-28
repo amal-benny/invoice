@@ -13,7 +13,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import type { Settings } from "@/src/types/invoice";
 import PaymentsTable from "./PaymentsTable";
-import type { WindowMethod } from "../src/types/window"; 
+import type { WindowMethod } from "../src/types/window";
 
 type TransactionType = "INCOME" | "EXPENSE";
 
@@ -183,11 +183,22 @@ export default function Payments() {
     endDate?: string;
   }>({ startDate: "", endDate: "" });
 
+  // Pagination state: show 8 rows per page
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
+
   useEffect(() => {
     loadBalances();
     loadTransactions();
     loadLedgers();
   }, []);
+
+  // Ensure currentPage remains valid when transactions change
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(transactions.length / pageSize));
+    if (currentPage > tp) setCurrentPage(tp);
+  }, [transactions, currentPage]);
 
   // Recalculate summary whenever transactions OR balances change
   useEffect(() => {
@@ -642,9 +653,11 @@ export default function Payments() {
         <div class="header">
           <div style="width:90px">
             ${
-              logoUrl
-                ? <img src="${logoUrl}" className="logo" alt="logo"/>
-                : <div style={{ width: "90px", height: "90px" }} ></div>
+              logoUrl ? (
+                <img src="${logoUrl}" className="logo" alt="logo" />
+              ) : (
+                <div style={{ width: "90px", height: "90px" }}></div>
+              )
             }
           </div>
 
@@ -769,6 +782,12 @@ export default function Payments() {
       delete window.updateDashboardRefresh;
     };
   }, []);
+
+  // compute paginated transactions for current page
+  const paginatedTransactions = transactions.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   return (
     <div className="space-y-6">
@@ -1144,7 +1163,7 @@ export default function Payments() {
               </thead>
 
               <tbody>
-                {transactions.map((tx) => {
+                {paginatedTransactions.map((tx) => {
                   const isIncome = tx.type === "INCOME";
 
                   return (
@@ -1231,6 +1250,33 @@ export default function Payments() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination UI (numbered pages) */}
+          <div className="mt-4 flex justify-center">
+            <nav
+              className="inline-flex items-center space-x-2"
+              aria-label="Pagination"
+            >
+              {Array.from({ length: totalPages }).map((_, idx) => {
+                const pageNum = idx + 1;
+                const isActive = pageNum === currentPage;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-1 rounded-md text-sm font-medium border ${
+                      isActive
+                        ? "bg-[rgb(128,41,73)] text-white border-[rgb(128,41,73)]"
+                        : "bg-white text-[rgb(128,41,73)] border-[rgb(128,41,73)] hover:bg-[rgb(128,41,73)] hover:text-white"
+                    }`}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
         </div>
       </div>
