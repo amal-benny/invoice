@@ -4,7 +4,6 @@ import { useState, useMemo } from "react";
 import { authFetch } from "../lib/api";
 import type { Invoicepay } from "@/src/types/invoice";
 
-
 type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card" | "Other";
 type WindowMethodType = "UPI" | "CASH" | "BANK" | "CARD";
 
@@ -12,6 +11,7 @@ declare global {
   interface Window {
     updateDashboardIncome?: (method: WindowMethodType, amount: number) => void;
     updateInvoiceRefresh?: (invoiceId?: number | string) => Promise<void>;
+    updateDashboardRefresh?: () => Promise<void>;
   }
 }
 
@@ -29,22 +29,22 @@ export default function PaymentModal({
   const currency = invoice?.currency ?? "INR";
 
   // Calculate totals dynamically
- const { subtotalNum, discountNum, taxable, taxAmount, total } = useMemo(() => {
-  const subtotalNum = Number(invoice?.subtotal ?? 0);
-  const discountNum = Number(invoice?.totalDiscount ?? 0);
-  const taxable = subtotalNum - discountNum;
+  const { subtotalNum, discountNum, taxable, taxAmount, total } =
+    useMemo(() => {
+      const subtotalNum = Number(invoice?.subtotal ?? 0);
+      const discountNum = Number(invoice?.totalDiscount ?? 0);
+      const taxable = subtotalNum - discountNum;
 
-  // Treat totalGST as absolute
-  const taxAmount = Number(invoice?.totalGST ?? 0);
+      // Treat totalGST as absolute
+      const taxAmount = Number(invoice?.totalGST ?? 0);
 
-  const total = taxable + taxAmount;
+      const total = taxable + taxAmount;
 
-  return { subtotalNum, discountNum, taxable, taxAmount, total };
-}, [invoice]);
+      return { subtotalNum, discountNum, taxable, taxAmount, total };
+    }, [invoice]);
 
-
-const existingAdvance = Number(invoice?.advancePaid ?? 0); // 85
-const remaining = Number((total - existingAdvance).toFixed(2)); // 385-85=300
+  const existingAdvance = Number(invoice?.advancePaid ?? 0); // 85
+  const remaining = Number((total - existingAdvance).toFixed(2)); // 385-85=300
 
   const [amount, setAmount] = useState(remaining);
   const [method, setMethod] = useState<MethodType>("Cash");
@@ -85,117 +85,132 @@ const remaining = Number((total - existingAdvance).toFixed(2)); // 385-85=300
   }
 
   async function submitPayment(e?: React.FormEvent) {
-  if (e) e.preventDefault();
-  if (!canSubmit) {
-    setError("Enter a valid amount greater than 0");
-    return;
-  }
-  if (!allowOverpay && amount > remaining) {
-    setError(
-      `Amount exceeds remaining balance (${currency} ${remaining.toFixed(2)})`
-    );
-    return;
-  }
-
-  setError(null);
-  setLoading(true);
-
-  try {
-    const roundedAmount = Math.round(amount * 100) / 100;
-
-    const payload = {
-      invoiceId: invoice.id,
-      amount: roundedAmount,
-      method,
-      date,
-      note,
-      ...(reference && { reference }),
-    };
-
-    const resp = await authFetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    // --- TypeScript-safe handling of response ---
-    let updatedInvoice: Invoicepay;
-
-    if ("invoice" in resp && resp.invoice) {
-      updatedInvoice = resp.invoice; // safe, has id
-    } else if (!("invoice" in resp)) {
-      updatedInvoice = resp as Invoicepay; // resp itself is Invoicepay
-    } else {
-      throw new Error("Payment response missing invoice data");
+    if (e) e.preventDefault();
+    if (!canSubmit) {
+      setError("Enter a valid amount greater than 0");
+      return;
+    }
+    if (!allowOverpay && amount > remaining) {
+      setError(
+        `Amount exceeds remaining balance (${currency} ${remaining.toFixed(2)})`
+      );
+      return;
     }
 
-    // Ensure numeric fields are rounded
-    updatedInvoice.advancePaid = Number(
-      Number(updatedInvoice.advancePaid ?? 0).toFixed(2)
-    );
-    updatedInvoice.total = Number(
-      Number(updatedInvoice.total ?? total).toFixed(2)
-    );
+    setError(null);
+    setLoading(true);
 
-    // Determine status if not present
-    if (!updatedInvoice.status) {
-      if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
-      else if ((updatedInvoice.advancePaid || 0) <= 0)
-        updatedInvoice.status = "PENDING";
-      else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total)
-        updatedInvoice.status = "PAID";
-      else updatedInvoice.status = "PARTIAL";
-    }
+    try {
+      const roundedAmount = Math.round(amount * 100) / 100;
 
-    onSuccess(updatedInvoice);
-    onClose();
+      const payload = {
+        invoiceId: invoice.id,
+        amount: roundedAmount,
+        method,
+        date,
+        note,
+        ...(reference && { reference }),
+      };
 
-    // Map frontend method to window method
-    const methodMap: Record<MethodType, WindowMethodType> = {
-      Cash: "CASH",
-      UPI: "UPI",
-      "Bank Transfer": "BANK",
-      Card: "CARD",
-      Other: "CASH",
-    };
+      const resp = await authFetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const windowMethod = methodMap[method];
+      // --- TypeScript-safe handling of response ---
+      let updatedInvoice: Invoicepay;
 
-    if (window.updateDashboardIncome) {
-      window.updateDashboardIncome(windowMethod, roundedAmount);
-    }
-
-    if (typeof window.updateInvoiceRefresh === "function") {
-      try {
-        await window.updateInvoiceRefresh(invoice.id);
-      } catch (e) {
-        console.warn("updateInvoiceRefresh failed:", e);
+      if ("invoice" in resp && resp.invoice) {
+        updatedInvoice = resp.invoice; // safe, has id
+      } else if (!("invoice" in resp)) {
+        updatedInvoice = resp as Invoicepay; // resp itself is Invoicepay
+      } else {
+        throw new Error("Payment response missing invoice data");
       }
-    }
-  } catch (err) {
-    setError("Payment failed: " + String(err));
-    
-  } finally {
-    setLoading(false);
-  }
-}
 
+      // Ensure numeric fields are rounded
+      updatedInvoice.advancePaid = Number(
+        Number(updatedInvoice.advancePaid ?? 0).toFixed(2)
+      );
+      updatedInvoice.total = Number(
+        Number(updatedInvoice.total ?? total).toFixed(2)
+      );
+
+      // Determine status if not present
+      if (!updatedInvoice.status) {
+        if (updatedInvoice.total <= 0) updatedInvoice.status = "PAID";
+        else if ((updatedInvoice.advancePaid || 0) <= 0)
+          updatedInvoice.status = "PENDING";
+        else if ((updatedInvoice.advancePaid || 0) >= updatedInvoice.total)
+          updatedInvoice.status = "PAID";
+        else updatedInvoice.status = "PARTIAL";
+      }
+
+      // Add global refresh trigger
+      // Refresh the single invoice and dashboard so remaining/balance is reloaded from DB
+      if (typeof window.updateInvoiceRefresh === "function") {
+        try {
+          await window.updateInvoiceRefresh(invoice.id);
+        } catch  {
+          // ignore refresh failure, we'll still return updatedInvoice
+        }
+      }
+
+      if (typeof window.updateDashboardRefresh === "function") {
+        try {
+          await window.updateDashboardRefresh();
+        } catch  {
+          // ignore
+        }
+      }
+
+      // Notify parent and close modal
+      onSuccess(updatedInvoice);
+      onClose();
+    } catch (err) {
+      setError("Payment failed: " + String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="w-full max-w-xl bg-white rounded-lg shadow-lg p-3">
         <h3 className="text-lg font-semibold mb-1">Record Payment</h3>
 
         <div className="space-y-1.5 mb-1.5">
           <div className="text-sm text-gray-700">
-            <div><strong>Invoice:</strong> {invoice.invoiceNumber}</div>
-            <div><strong>Subtotal:</strong> {currency} {subtotalNum.toFixed(2)}</div>
-            <div><strong>Discount:</strong> {currency} {discountNum.toFixed(2)}</div>
-            <div><strong>Taxable:</strong> {currency} {taxable.toFixed(2)}</div>
-            <div><strong>Tax:</strong> {currency} {taxAmount.toFixed(2)}</div>
-            <div><strong>Total:</strong> {currency} {total.toFixed(2)}</div>
-            <div><strong>Already Paid:</strong> {currency} {existingAdvance.toFixed(2)}</div>
-            <div><strong>Remaining:</strong> {currency} {remaining.toFixed(2)}</div>
+            <div>
+              <strong>Invoice:</strong> {invoice.invoiceNumber}
+            </div>
+            <div>
+              <strong>Subtotal:</strong> {currency} {subtotalNum.toFixed(2)}
+            </div>
+            <div>
+              <strong>Discount:</strong> {currency} {discountNum.toFixed(2)}
+            </div>
+            <div>
+              <strong>Taxable:</strong> {currency} {taxable.toFixed(2)}
+            </div>
+            <div>
+              <strong>Tax:</strong> {currency} {taxAmount.toFixed(2)}
+            </div>
+            <div>
+              <strong>Total:</strong> {currency} {total.toFixed(2)}
+            </div>
+            <div>
+              <strong>Already Paid:</strong> {currency}{" "}
+              {existingAdvance.toFixed(2)}
+            </div>
+            <div>
+              <strong>Remaining:</strong> {currency} {remaining.toFixed(2)}
+            </div>
           </div>
 
           <form onSubmit={submitPayment} className="space-y-1">
@@ -258,13 +273,24 @@ const remaining = Number((total - existingAdvance).toFixed(2)); // 385-85=300
             </div>
 
             {error && <div className="text-xs text-red-600">{error}</div>}
-            {!error && warning && <div className="text-xs text-yellow-700">{warning}</div>}
+            {!error && warning && (
+              <div className="text-xs text-yellow-700">{warning}</div>
+            )}
 
             <div className="flex gap-2 mt-2 justify-end">
-              <button type="button" className="px-3 py-1 border rounded text-sm" onClick={onClose} disabled={loading}>
+              <button
+                type="button"
+                className="px-3 py-1 border rounded text-sm"
+                onClick={onClose}
+                disabled={loading}
+              >
                 Cancel
               </button>
-              <button type="submit" className="btn px-3 py-1 text-sm" disabled={!canSubmit || loading}>
+              <button
+                type="submit"
+                className="btn px-3 py-1 text-sm"
+                disabled={!canSubmit || loading}
+              >
                 {loading ? "Processing..." : "Save Payment"}
               </button>
             </div>

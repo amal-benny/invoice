@@ -138,8 +138,7 @@ export default function PaymentsTable() {
               "Advance",
               "Remaining",
               "Status",
-              "Reference",
-              "Note",
+             
             ].map((header) => (
               <th
                 key={header}
@@ -194,8 +193,7 @@ export default function PaymentsTable() {
                       {p.invoice.status}
                     </span>
                   </td>
-                  <td className="px-2 py-1">{p.reference || "-"}</td>
-                  <td className="px-2 py-1">{p.note || "-"}</td>
+                  
                 </tr>
               );
             })

@@ -23,23 +23,23 @@ function computeCustomerStatus(invoiceStatuses) {
   if (!invoiceStatuses || invoiceStatuses.length === 0) return "UNPAID";
   const allPaid = invoiceStatuses.every((s) => s === "PAID");
   if (allPaid) return "PAID";
-  const anyPartialOrPaid = invoiceStatuses.some((s) => s === "PARTIAL" || s === "PAID");
+  const anyPartialOrPaid = invoiceStatuses.some(
+    (s) => s === "PARTIAL" || s === "PAID"
+  );
   return anyPartialOrPaid ? "PARTIAL" : "UNPAID";
 }
 
 // Create a payment
 router.post("/", auth, async (req, res) => {
-  const { invoiceId, amount, method, date, note} = req.body;
+  const { invoiceId, amount, method, date, note } = req.body;
   const paymentAmount = parseFloat(amount || 0);
-
-  if (!invoiceId || isNaN(paymentAmount) || paymentAmount <= 0) {
-    return res.status(400).json({ message: "invoiceId and positive amount are required" });
-  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
       // Load invoice
-      const invoice = await tx.invoice.findUnique({ where: { id: Number(invoiceId) } });
+      const invoice = await tx.invoice.findUnique({
+        where: { id: Number(invoiceId) },
+      });
       if (!invoice) throw new Error("Invoice not found");
       // Create payment
       const p = await tx.payment.create({
@@ -50,7 +50,20 @@ router.post("/", auth, async (req, res) => {
           date: date ? new Date(date) : undefined,
           note: note || undefined,
           createdById: req.user.id,
-          
+        },
+      });
+
+      // Add new transaction record for the payment
+      await tx.transaction.create({
+        data: {
+          type: "INCOME",
+          category: "Payment",
+          amount: paymentAmount,
+          date: date ? new Date(date) : new Date(),
+          description: `Payment for Invoice #${invoice.invoiceNumber}`,
+          method: method,
+          reference: note || undefined,
+          createdById: req.user.id,
         },
       });
 
@@ -95,14 +108,15 @@ router.post("/", auth, async (req, res) => {
         include: { payments: true, items: true, customer: true },
       });
 
-
       return { payment: p, invoice: invoiceWithRelations };
     });
 
     res.json(result);
   } catch (err) {
     console.error("Payment create error:", err);
-    res.status(500).json({ message: err.message || "Failed to create payment" });
+    res
+      .status(500)
+      .json({ message: err.message || "Failed to create payment" });
   }
 });
 
@@ -121,7 +135,5 @@ router.get("/", auth, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch payments" });
   }
 });
-
-
 
 module.exports = router;
