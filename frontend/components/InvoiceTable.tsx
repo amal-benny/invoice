@@ -5,9 +5,8 @@ import { Eye, Edit, Trash } from "lucide-react";
 import PaymentModal from "../components/PaymentModal";
 import type { Invoice } from "../src/types/invoice";
 import type { Invoicepay } from "@/src/types/invoice";
-
-
-
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type Payment = {
   id?: number;
@@ -17,16 +16,12 @@ type Payment = {
   note?: string;
 };
 
-
-
-
-
 export default function InvoiceTable({
   invoices,
   onConvert,
   onView,
   onEdit,
-  onDelete,
+  onDelete, // note: we will NOT call this anymore on local delete
   onPaymentSuccess,
 }: {
   invoices: Invoice[];
@@ -44,7 +39,14 @@ export default function InvoiceTable({
   // Load deleted IDs from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("deletedInvoices");
-    if (saved) setDeletedIds(JSON.parse(saved));
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setDeletedIds(parsed);
+      } catch {
+        // ignore
+      }
+    }
   }, []);
 
   // Keep localInvoices in sync when invoices prop changes
@@ -57,7 +59,8 @@ export default function InvoiceTable({
       await authFetch(`/api/invoices/${id}/convert`, { method: "POST" });
       if (onConvert) onConvert(id);
     } catch (err) {
-      alert("Failed to convert quotation."+err);
+      // replaced alert with toast
+      toast.error("Failed to convert quotation: " + String(err));
     }
   }
 
@@ -116,12 +119,19 @@ export default function InvoiceTable({
   }
 
   const handleDelete = (id: number) => {
+    // mark locally deleted, persist to localStorage, do NOT call onDelete
     setDeletedIds((prev) => {
-      const updated = [...prev, id];
-      localStorage.setItem("deletedInvoices", JSON.stringify(updated));
+      const updated = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem("deletedInvoices", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to persist deletedInvoices", e);
+      }
       return updated;
     });
-    if (onDelete) onDelete(id);
+
+    toast.info("Marked invoice as deleted ");
+    // Do NOT call onDelete(id) — user requested no DB delete from this button
   };
 
   // Filter invoices based on searchText
@@ -204,14 +214,12 @@ export default function InvoiceTable({
                 filteredInvoices.map((inv, idx) => {
                   const status = computeStatus(inv);
                   const paid = paidAmount(inv);
-                  const isDeleted = deletedIds.includes(inv.id);
+                  const isDeleted = inv.id ? deletedIds.includes(inv.id) : false;
 
                   return (
                     <tr
                       key={inv.id}
-                      className={`hover:bg-gray-50 ${
-                        isDeleted ? "opacity-50" : ""
-                      }`}
+                      className={`hover:bg-gray-50 ${isDeleted ? "opacity-50" : ""}`}
                     >
                       <td className="px-3 py-2 border-b">{idx + 1}</td>
                       <td className="px-3 py-2 border-b">
@@ -226,13 +234,9 @@ export default function InvoiceTable({
                           {inv.type}
                         </span>
                       </td>
+                      <td className="px-3 py-2 border-b">{inv.customer?.name || "-"}</td>
                       <td className="px-3 py-2 border-b">
-                        {inv.customer?.name || "-"}
-                      </td>
-                      <td className="px-3 py-2 border-b">
-                        {inv.date
-                          ? new Date(inv.date).toLocaleDateString()
-                          : "-"}
+                        {inv.date ? new Date(inv.date).toLocaleDateString() : "-"}
                       </td>
                       <td className="px-3 py-2 border-b">
                         {inv.currency} {Number(inv.total || 0).toFixed(2)}
@@ -251,10 +255,11 @@ export default function InvoiceTable({
                           </div>
                         </div>
                       </td>
+
                       <td className="px-3 py-2 border-b flex gap-2 items-center">
                         {isDeleted ? (
                           <span className="px-3 py-1 bg-red-300 text-gray-600 rounded-full text-sm font-semibold">
-                            Deleted
+                            Deleted (read-only)
                           </span>
                         ) : (
                           <>
@@ -310,7 +315,7 @@ export default function InvoiceTable({
 
       {payInvoice && (
         <PaymentModal
-          invoice={payInvoice  as Invoicepay} // ✅ correct
+          invoice={payInvoice as Invoicepay} // ✅ correct
           onClose={() => setPayInvoice(null)}
           onSuccess={(updatedInvoice: Invoice) => {
             setPayInvoice(null);

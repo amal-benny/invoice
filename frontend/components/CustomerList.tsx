@@ -64,6 +64,15 @@ export default function CustomerList() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Touched>({});
 
+  // local deleted ids (UI-only delete)
+  const [deletedIds, setDeletedIds] = useState<number[]>([]);
+
+  // NEW: modal state for confirmation
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: number | null;
+    name?: string;
+  }>({ id: null, name: undefined });
+
   async function load() {
     setLoading(true);
     try {
@@ -71,14 +80,27 @@ export default function CustomerList() {
       const data = (await authFetch("/api/customers")) as Customer[];
       setCustomers(data || []);
     } catch (err) {
-      toast.error("Failed to load customers: " + err);
+      toast.error("Failed to load customers: " + String(err));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    // load customers
     load();
+
+    // load deleted ids from localStorage
+    try {
+      const saved = localStorage.getItem("local_deleted_customers");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setDeletedIds(parsed.map((v) => Number(v)).filter((n) => !Number.isNaN(n)));
+      }
+    } catch (e) {
+      // ignore parse errors
+      console.error("Failed to read local deleted customers", e);
+    }
   }, []);
 
   function resetForm() {
@@ -145,8 +167,6 @@ export default function CustomerList() {
         if (!v) return undefined; // optional
         if (!panRegex.test(v)) return "PAN format seems invalid (e.g. AAAAA9999A).";
         return undefined;
-
-     
 
       case "stateCode":
         if (!v) return undefined; // optional
@@ -242,7 +262,7 @@ export default function CustomerList() {
           body: JSON.stringify(form),
           headers: { "Content-Type": "application/json" },
         });
-         toast.success("Customer updated successfully!");
+        toast.success("Customer updated successfully!");
       } else {
         await authFetch("/api/customers", {
           method: "POST",
@@ -254,21 +274,50 @@ export default function CustomerList() {
       resetForm();
       load();
     } catch (err) {
-      alert("Save failed: " + err);
+      // replaced alert with toast
+      toast.error("Save failed: " + String(err));
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm("Delete this customer? This will remove the record permanently.")) return;
-    try {
-      await authFetch(`/api/customers/${id}`, { method: "DELETE" });
-      if (editing === id) resetForm();
-      load();
-    } catch (err) {
-      toast.error("Delete failed: " + err);
+  // helper that actually performs the local-only delete (same behavior as before)
+  function performLocalDelete(id: number) {
+    setDeletedIds((prev) => {
+      const updated = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem("local_deleted_customers", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to persist local deleted customers", e);
+      }
+      return updated;
+    });
+
+    toast.info("Customer marked as deleted");
+  }
+
+  // OPEN the confirmation modal (replaces confirm(...))
+  function openDeleteModal(id: number, name?: string) {
+    setPendingDelete({ id, name });
+  }
+
+  // Called when modal user clicks OK
+  function confirmDeleteFromModal() {
+    if (pendingDelete.id != null) {
+      performLocalDelete(pendingDelete.id);
     }
+    setPendingDelete({ id: null, name: undefined });
+  }
+
+  // Called when modal user clicks Cancel / closes modal
+  function cancelDeleteModal() {
+    setPendingDelete({ id: null, name: undefined });
+  }
+
+  // Backwards-compatible handler (used in UI buttons) — now opens modal
+  function handleDelete(id: number, name?: string) {
+    // previously used confirm(); now open modal instead
+    openDeleteModal(id, name);
   }
 
   // Calculate totals for a customer
@@ -334,7 +383,6 @@ export default function CustomerList() {
               onBlur={() => handleBlur("name")}
               required
               aria-invalid={!!errors.name}
-
             />
             <FieldError name="name" />
           </div>
@@ -394,7 +442,6 @@ export default function CustomerList() {
               value={form.gstNumber}
               onChange={(e) => handleChange("gstNumber", e.target.value.toUpperCase())}
               onBlur={() => handleBlur("gstNumber")}
-              
             />
             <FieldError name="gstNumber" />
           </div>
@@ -477,11 +524,22 @@ export default function CustomerList() {
             {filteredCustomers.length === 0 && <div className="text-sm text-gray-500">No customers found.</div>}
             {filteredCustomers.map((c) => {
               const { totalPaid, balance } = computeCustomerAmounts(c);
+              const isDeleted = deletedIds.includes(c.id);
 
               return (
-                <div key={c.id} className="p-3 border rounded-md flex justify-between items-start shadow-sm hover:shadow-md transition">
+                <div
+                  key={c.id}
+                  className="p-3 border rounded-md flex justify-between items-start shadow-sm hover:shadow-md transition"
+                  style={{
+                    backgroundColor: isDeleted ? "#fff5f6" : "white", // light red for deleted
+                    opacity: isDeleted ? 0.8 : 1,
+                    textDecoration: isDeleted ? "line-through" : "none",
+                  }}
+                >
                   <div className="flex-1 pr-4">
-                    <div className="font-semibold">{c.name} <span className="kv">({c.company || "—"})</span></div>
+                    <div className="font-semibold">
+                      {c.name} <span className="kv">({c.company || "—"})</span>
+                    </div>
                     <div className="kv">{c.email || "—"} • {c.phone || "—"}</div>
                     <div className="kv mt-1">
                       {c.stateName && <>State: {c.stateName} ({c.stateCode}) • </>}
@@ -509,12 +567,18 @@ export default function CustomerList() {
                     </div>
 
                     <div className="flex gap-2">
-                      <button title="Edit" onClick={() => startEdit(c)} className="p-2 rounded-md border-2 border-yellow-400 hover:bg-yellow-50 transition flex items-center gap-2">
-                        <Edit size={16} className="text-yellow-600" /> Edit
-                      </button>
-                      <button title="Delete" onClick={() => handleDelete(c.id)} className="p-2 rounded-md border-2 border-red-400 hover:bg-red-50 transition flex items-center gap-2">
-                        <Trash size={16} className="text-red-600" /> Delete
-                      </button>
+                      {!isDeleted ? (
+                        <>
+                          <button title="Edit" onClick={() => startEdit(c)} className="p-2 rounded-md border-2 border-yellow-400 hover:bg-yellow-50 transition flex items-center gap-2">
+                            <Edit size={16} className="text-yellow-600" /> Edit
+                          </button>
+                          <button title="Delete" onClick={() => handleDelete(c.id, c.name)} className="p-2 rounded-md border-2 border-red-400 hover:bg-red-50 transition flex items-center gap-2">
+                            <Trash size={16} className="text-red-600" /> Delete
+                          </button>
+                        </>
+                      ) : (
+                        <span className="px-3 py-1 bg-red-200 text-red-800 rounded-full text-sm font-semibold">Deleted (read-only)</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -523,7 +587,37 @@ export default function CustomerList() {
           </div>
         )}
       </div>
-      
+
+      {/* Confirmation Modal */}
+      {pendingDelete.id != null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black opacity-40" onClick={cancelDeleteModal} />
+          <div className="bg-white rounded-lg shadow-lg z-10 w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold mb-2">Confirm mark deleted</h3>
+            <p className="mb-4">
+              Are you sure you want to mark this customer as deleted?
+              <br />
+              
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded-md border"
+                onClick={cancelDeleteModal}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-md text-white"
+                style={{ backgroundColor: "rgb(128,41,73)" }}
+                onClick={confirmDeleteFromModal}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
