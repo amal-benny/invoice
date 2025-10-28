@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import type { Settings } from "@/src/types/invoice";
 import PaymentsTable from "./PaymentsTable";
+import type { WindowMethod } from "../src/types/window"; 
 
 type TransactionType = "INCOME" | "EXPENSE";
 
@@ -62,15 +63,6 @@ interface Stats {
   otherIncome?: number;
   netProfit?: number;
 }
-
-declare global {
-  interface Window {
-    updateDashboardIncome?: (method: WindowMethod, amount: number) => void;
-    updateDashboardRefresh?: () => Promise<void>;
-  }
-}
-
-type WindowMethod = "CASH" | "BANK" | "UPI" | "CARD";
 
 // Helper to convert number to words (unchanged)
 function numberToWords(num: number): string {
@@ -652,7 +644,7 @@ export default function Payments() {
             ${
               logoUrl
                 ? <img src="${logoUrl}" className="logo" alt="logo"/>
-                : <div style={{ width: "90px", height: "90px" }}></div>
+                : <div style={{ width: "90px", height: "90px" }} ></div>
             }
           </div>
 

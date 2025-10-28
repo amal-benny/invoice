@@ -5,15 +5,6 @@ import { authFetch } from "../lib/api";
 import type { Invoicepay } from "@/src/types/invoice";
 
 type MethodType = "Cash" | "Bank Transfer" | "UPI" | "Card" | "Other";
-type WindowMethodType = "UPI" | "CASH" | "BANK" | "CARD";
-
-declare global {
-  interface Window {
-    updateDashboardIncome?: (method: WindowMethodType, amount: number) => void;
-    updateInvoiceRefresh?: (invoiceId?: number | string) => Promise<void>;
-    updateDashboardRefresh?: () => Promise<void>;
-  }
-}
 
 export default function PaymentModal({
   invoice,
@@ -152,16 +143,16 @@ export default function PaymentModal({
       if (typeof window.updateInvoiceRefresh === "function") {
         try {
           await window.updateInvoiceRefresh(invoice.id);
-        } catch  {
-          // ignore refresh failure, we'll still return updatedInvoice
+        } catch (e) {
+          console.warn("Invoice refresh failed:", e);
         }
       }
 
       if (typeof window.updateDashboardRefresh === "function") {
         try {
           await window.updateDashboardRefresh();
-        } catch  {
-          // ignore
+        } catch (e) {
+          console.warn("Update Dashboard failed:", e);
         }
       }
 

@@ -1,8 +1,10 @@
+// components/DashboardSummary.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { DollarSign, CreditCard, ArrowUp } from "lucide-react";
 import { authFetch } from "../lib/api";
+import type { WindowMethod } from "../src/types/window"; // <-- use the canonical type from your window.d.ts
 
 type SummaryRow = {
   starting: number;
@@ -11,8 +13,6 @@ type SummaryRow = {
   net: number;
   closing: number;
 };
-
-type MethodType = "CASH" | "BANK" | "CARD" | "UPI";
 
 interface Balance {
   id: number;
@@ -28,16 +28,6 @@ interface Transaction {
   amount: number;
   date: string;
   category?: string;
-}
-
-declare global {
-  interface Window {
-    updateDashboardRefresh?: (method?: MethodType, amount?: number) => Promise<void>;
-    resetDashboardBalances?: () => Promise<void>;
-
-   
-    updateDashboardIncome?: (method: MethodType, amount: number) => void;
-  }
 }
 
 export default function DashboardSummary() {
@@ -149,6 +139,7 @@ export default function DashboardSummary() {
 
   // expose typed global methods so other modules can tell dashboard to refresh
   useEffect(() => {
+    // window.updateDashboardRefresh and resetDashboardBalances are defined by other modules (no declare here)
     window.updateDashboardRefresh = async () => {
       await reloadAll();
     };
@@ -157,8 +148,9 @@ export default function DashboardSummary() {
       await reloadAll();
     };
 
-    /** ✅ NEW: updateDashboardIncome — adds income instantly */
-    window.updateDashboardIncome = (method: MethodType, amount: number) => {
+    /** ✅ updateDashboardIncome — adds income instantly (uses WindowMethod from window.d.ts) */
+    window.updateDashboardIncome = (method: WindowMethod, amount: number) => {
+      // normalize incoming method (WindowMethod uses uppercase tokens like "CASH","BANK" etc.)
       if (method === "CASH") {
         setCash((prev) => {
           const income = round2(prev.income + amount);
