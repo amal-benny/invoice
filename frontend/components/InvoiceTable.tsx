@@ -145,7 +145,8 @@ export default function InvoiceTable({
 
   function getCustomerPhoneRaw(inv: Invoice): string {
     // Cast only for structural access to likely phone fields (safe and narrow)
-    const customer = (inv as Invoice & { customer?: CustomerPhoneShape }).customer;
+    const customer = (inv as Invoice & { customer?: CustomerPhoneShape })
+      .customer;
     if (!customer) return "";
     return (
       customer.phone ??
@@ -175,9 +176,19 @@ export default function InvoiceTable({
     const name = inv.customer?.name || "";
     const invoiceNumber = inv.invoiceNumber || "";
 
-    const message = `Hello ${name},\n\nThis is regarding Invoice ${invoiceNumber}. The amount paid to date is ${inv.currency} ${paid.toFixed(
+    const message = `Hello ${name},
+
+This is regarding *Invoice ${invoiceNumber}*. 
+
+The amount paid to date is *${inv.currency} ${paid.toFixed(
       2
-    )},and the outstanding balance is ${inv.currency} ${balance.toFixed(2)}. We kindly request you to clear the pending balance at earliest convenience.\n\nIf you have any questions, please reply here.\n\nThank you!`;
+    )}*, and the outstanding balance is *${inv.currency} ${balance.toFixed(2)}*.
+
+We kindly request you to clear the pending balance at your earliest convenience.
+
+If you have any questions, please reply here.
+
+Thank you!`;
 
     // Use wa.me link. Note: wa.me requires full international format ideally.
     const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
@@ -267,12 +278,16 @@ export default function InvoiceTable({
                 filteredInvoices.map((inv, idx) => {
                   const status = computeStatus(inv);
                   const paid = paidAmount(inv);
-                  const isDeleted = inv.id ? deletedIds.includes(inv.id) : false;
+                  const isDeleted = inv.id
+                    ? deletedIds.includes(inv.id)
+                    : false;
 
                   return (
                     <tr
                       key={inv.id}
-                      className={`hover:bg-gray-50 ${isDeleted ? "opacity-50" : ""}`}
+                      className={`hover:bg-gray-50 ${
+                        isDeleted ? "opacity-50" : ""
+                      }`}
                     >
                       <td className="px-3 py-2 border-b">{idx + 1}</td>
                       <td className="px-3 py-2 border-b">
@@ -287,9 +302,13 @@ export default function InvoiceTable({
                           {inv.type}
                         </span>
                       </td>
-                      <td className="px-3 py-2 border-b">{inv.customer?.name || "-"}</td>
                       <td className="px-3 py-2 border-b">
-                        {inv.date ? new Date(inv.date).toLocaleDateString() : "-"}
+                        {inv.customer?.name || "-"}
+                      </td>
+                      <td className="px-3 py-2 border-b">
+                        {inv.date
+                          ? new Date(inv.date).toLocaleDateString()
+                          : "-"}
                       </td>
                       <td className="px-3 py-2 border-b">
                         {inv.currency} {Number(inv.total || 0).toFixed(2)}
@@ -353,7 +372,9 @@ export default function InvoiceTable({
                               className="p-2 bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-1"
                               onClick={() => openWhatsAppForInvoice(inv, paid)}
                               title="Send WhatsApp"
-                              aria-label={`Send WhatsApp to ${inv.customer?.name || "customer"}`}
+                              aria-label={`Send WhatsApp to ${
+                                inv.customer?.name || "customer"
+                              }`}
                             >
                               {/* small WhatsApp SVG icon */}
                               <svg
