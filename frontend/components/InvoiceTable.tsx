@@ -21,7 +21,6 @@ export default function InvoiceTable({
   onConvert,
   onView,
   onEdit,
-  onDelete, // note: we will NOT call this anymore on local delete
   onPaymentSuccess,
 }: {
   invoices: Invoice[];
