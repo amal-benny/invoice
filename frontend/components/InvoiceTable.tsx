@@ -175,9 +175,9 @@ export default function InvoiceTable({
     const name = inv.customer?.name || "";
     const invoiceNumber = inv.invoiceNumber || "";
 
-    const message = `Hello ${name},\nInvoice: ${invoiceNumber}\nPaid: ${inv.currency} ${paid.toFixed(
+    const message = `Hello ${name},\n\nThis is regarding Invoice ${invoiceNumber}. The amount paid to date is ${inv.currency} ${paid.toFixed(
       2
-    )}\nBalance: ${inv.currency} ${balance.toFixed(2)}\n\nIf you have any questions, please reply here.`;
+    )},and the outstanding balance is ${inv.currency} ${balance.toFixed(2)}. We kindly request you to clear the pending balance at earliest convenience.\n\nIf you have any questions, please reply here.\n\nThank you!`;
 
     // Use wa.me link. Note: wa.me requires full international format ideally.
     const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
