@@ -211,7 +211,7 @@ export default function SettingsForm({
             <option value="INR">INR</option>
             <option value="USD">USD</option>
             <option value="EUR">EUR</option>
-            <option value="EUR">AED</option>
+            <option value="AED">AED</option>
           </select>
           <div>
             <label className="kv">Logo</label>

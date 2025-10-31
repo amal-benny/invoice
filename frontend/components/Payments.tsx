@@ -140,6 +140,7 @@ export default function Payments() {
   const [newBalance, setNewBalance] = useState<number>(0);
   const [newMethod, setNewMethod] = useState<"Cash" | "Bank">("Cash");
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const todayISO = () => new Date().toISOString().split("T")[0];
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
@@ -148,7 +149,7 @@ export default function Payments() {
     type: "INCOME" as TransactionType,
     category: "",
     amount: 0,
-    date: "",
+    date: todayISO(),  
     description: "",
     method: "Cash" as "Cash" | "Bank",
     reference: "",
@@ -342,7 +343,7 @@ export default function Payments() {
         type: "INCOME",
         category: "",
         amount: 0,
-        date: "",
+        date: todayISO(),
         description: "",
         method: "Cash",
         reference: "",
@@ -556,8 +557,8 @@ export default function Payments() {
         }
 
         .logo {
-          width: 90px;
-          height: 90px;
+          width: 70px;
+          height: 70px;
           object-fit: contain;
         }
 
@@ -651,15 +652,13 @@ export default function Payments() {
     <body>
       <div class="page">
         <div class="header">
-          <div style="width:90px">
-            ${
-              logoUrl ? (
-                <img src="${logoUrl}" className="logo" alt="logo" />
-              ) : (
-                <div style={{ width: "90px", height: "90px" }}></div>
-              )
-            }
-          </div>
+         <div style="width:90px">
+  ${
+    logoUrl
+      ? `<img src="${logoUrl}" class="logo" alt="logo" />`
+      : `<div style="width:90px; height:90px;"></div>`
+  }
+</div>
 
           <div class="company">
             <h1>${companyName}</h1>
