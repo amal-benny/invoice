@@ -5,10 +5,6 @@ import html2pdf from "html2pdf.js";
 import InvoiceForm from "./InvoiceForm";
 import type { Invoice } from "../src/types/invoice";
 
-
-
- 
-
 /* ---------- Types ---------- */
 
 type InvoiceItem = {
@@ -209,112 +205,6 @@ export default function InlineInvoiceView({
     }, 350);
   };
 
-  const handleDownloadPDF = (pageSize: "A4" | "A5" = "A4") => {
-    if (!componentRef.current) return;
-
-    // Capture any <style> and <link> tags from the document (for Tailwind or custom fonts)
-    const styles = Array.from(
-      document.querySelectorAll("style, link[rel='stylesheet']")
-    )
-      .map((el) => el.outerHTML)
-      .join("\n");
-
-    // Define invoice-specific styling (same as print layout)
-    const compactCss = `
-  /* Reset for print */
-  html, body { margin:0; padding:0; -webkit-print-color-adjust: exact; color-adjust: exact; font-size:10px; }
-  body { font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#111827; }
-
-  /* Invoice card */
-  .invoice-card { 
-    box-sizing: border-box; 
-    width:100%; 
-    max-width:700px; 
-    margin:10px auto; 
-    padding:16px; 
-    background:#ffffff; 
-    border:1px solid #e6e6e6; 
-    border-radius:4px; 
-  }
-
-  /* Header */
-  .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-  .invoice-left { display:flex; align-items:center; gap:8px; }
-  .company-logo { height:40px; width:auto; object-fit:contain; }
-  .company-name { font-size:14px; font-weight:700; line-height:1.1; }
-  .company-meta { font-size:8px; color:rgba(0,0,0,0.65); margin-top:1px; }
-  .invoice-right { text-align:right; }
-  .invoice-type { font-size:16px; font-weight:700; letter-spacing:0.3px; }
-  .invoice-meta { margin-top:4px; display:inline-block; background:#f3f4f6; padding:4px 6px; border-radius:3px; font-size:8px; color:#111827; }
-
-  /* Bill To block */
-  .bill-to { margin-top:8px; background:#f9fafb; padding:8px; border-radius:3px; border:1px solid #f1f1f1; font-size:9px; color:#111827; }
-
-  /* Items table */
-  .items-table { width:100%; border-collapse:collapse; margin-top:8px; font-size:9px; }
-  .items-table thead tr { background:#6b2135; color:#fff; }
-  .items-table th, .items-table td { padding:4px 4px; border-bottom:1px solid #eee; vertical-align:top; }
-  .items-table th { font-weight:700; font-size:9px; text-align:left; }
-  .items-table td { color:#111827; }
-  .items-table .text-right { text-align:right; }
-  .items-table .text-center { text-align:center; }
-
-  /* Summary box */
-  .summary-wrap { display:flex; justify-content:flex-end; margin-top:8px; }
-  .summary-box { width:200px; background:#f9fafb; border:1px solid #ececec; border-radius:4px; padding:6px; font-size:9px; }
-  .summary-row { display:flex; justify-content:space-between; padding:2px 0; color:#111827; }
-  .summary-row.small { font-size:8px; color:rgba(0,0,0,0.7); }
-  .balance { font-weight:700; color:#7b2540; font-size:12px; margin-top:4px; }
-
-  /* Notes */
-  .notes { margin-top:6px; background:#f9fafb; padding:6px; border-radius:3px; border:1px solid #ececec; font-size:9px; }
-
-  /* Utility classes */
-  .kv { font-size:8px; color:rgba(0,0,0,0.65); }
-  .small { font-size:8px; color:rgba(0,0,0,0.65); }
-
-  /* Print page size and margins */
-  @media print {
-    @page { size: ${pageSize} portrait; margin:6mm; }
-    body { margin: 0;padding: 0; }
-    .invoice-card { box-shadow:none !important; }
-  }
-`;
-
-    // Clone the invoice HTML and inject styles so html2pdf captures it correctly
-    const invoiceClone = componentRef.current.cloneNode(true) as HTMLElement;
-
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = `
-    <html>
-      <head>
-        ${styles}
-        <style>${compactCss}</style>
-      </head>
-      <body>
-        ${invoiceClone.outerHTML}
-      </body>
-    </html>
-  `;
-
-    html2pdf()
-      .set({
-        margin: 10,
-        filename: invoice
-          ? `Invoice-${invoice.invoiceNumber}.pdf`
-          : "invoice.pdf",
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: {
-          unit: "mm",
-          format: pageSize.toLowerCase(),
-          orientation: "portrait",
-        },
-      })
-      .from(wrapper)
-      .save();
-  };
-
   if (!invoiceId) return <div className="p-6">Please select an invoice.</div>;
   if (!invoice) return <div className="p-6">Loading invoice...</div>;
 
@@ -352,8 +242,6 @@ export default function InlineInvoiceView({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          
-         
           <button
             onClick={() => setEditing(true)}
             className="px-4 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm shadow-sm hover:shadow-md transition"
@@ -363,28 +251,15 @@ export default function InlineInvoiceView({
 
           <button
             onClick={() => handlePrint("A4")}
-            className="px-4 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm shadow-sm hover:shadow-md transition"
+            className="px-4 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm shadow-sm hover:shadow-md transition bg-primary text-white"
           >
             Print A4
           </button>
           <button
             onClick={() => handlePrint("A5")}
-            className="px-4 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm shadow-sm hover:shadow-md transition"
+            className="px-4 py-2 rounded-md border border-neutral-200 dark:border-neutral-700 text-sm shadow-sm hover:shadow-md transition bg-primary text-white"
           >
             Print A5
-          </button>
-
-          <button
-            onClick={() => handleDownloadPDF("A4")}
-            className="px-4 py-2 rounded-md bg-primary text-white font-semibold shadow hover:opacity-95 transition"
-          >
-            Download PDF A4
-          </button>
-          <button
-            onClick={() => handleDownloadPDF("A5")}
-            className="px-4 py-2 rounded-md bg-primary text-white font-semibold shadow hover:opacity-95 transition"
-          >
-            Download PDF A5
           </button>
         </div>
       </div>
@@ -424,9 +299,17 @@ export default function InlineInvoiceView({
             </div>
             <div className="mt-2 bg-neutral-50 dark:bg-neutral-700 p-3 rounded-md inline-block text-sm">
               <div className="font-medium">{invoice.invoiceNumber}</div>
-              <div className="text-xs opacity-80">Date: {invoice.date}</div>
               <div className="text-xs opacity-80">
-                Due Date: {invoice.dueDate}
+                Date:{" "}
+                {invoice.date
+                  ? new Date(invoice.date).toLocaleDateString("en-GB") // shows DD/MM/YYYY
+                  : "-"}
+              </div>
+              <div className="text-xs opacity-80">
+                Due Date:{" "}
+                {invoice.dueDate
+                  ? new Date(invoice.dueDate).toLocaleDateString("en-GB")
+                  : "-"}
               </div>
             </div>
           </div>

@@ -149,7 +149,7 @@ export default function Payments() {
     type: "INCOME" as TransactionType,
     category: "",
     amount: 0,
-    date: todayISO(),  
+    date: todayISO(),
     description: "",
     method: "Cash" as "Cash" | "Bank",
     reference: "",
@@ -234,27 +234,36 @@ export default function Payments() {
     }
   }
 
-  async function loadTransactions() {
-    try {
-      const query = new URLSearchParams(
-        Object.fromEntries(Object.entries(search).filter(([, v]) => v !== ""))
-      ).toString();
+ async function loadTransactions() {
+  try {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(search).filter(([, v]) => v !== ""))
+    ).toString();
 
-      const data = (await authFetch(
-        `/api/transactions?${query}`
-      )) as Transaction[];
+    const data = (await authFetch(`/api/transactions?${query}`)) as Transaction[];
 
-      const normalized = data.map((t) => ({
-        ...t,
-        method: (t.method.charAt(0).toUpperCase() +
-          t.method.slice(1).toLowerCase()) as "Cash" | "Bank",
-      })) as Transaction[];
+    const normalized = (data.map((t) => ({
+      ...t,
+      method:
+        typeof t.method === "string"
+          ? (t.method.charAt(0).toUpperCase() + t.method.slice(1).toLowerCase())
+          : t.method,
+    })) as Transaction[]);
 
-      setTransactions(normalized);
-    } catch (err) {
-      console.error("Failed to load transactions", err);
-    }
+    // sort by date DESC (newest first). Fallback to id desc if date missing.
+    normalized.sort((a, b) => {
+      const ta = a.date ? new Date(a.date).getTime() : 0;
+      const tb = b.date ? new Date(b.date).getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      return (b.id || 0) - (a.id || 0);
+    });
+
+    setTransactions(normalized);
+  } catch (err) {
+    console.error("Failed to load transactions", err);
   }
+}
+
 
   async function addOrUpdateBalance() {
     if (!newBalance && newBalance !== 0) return;
@@ -331,8 +340,15 @@ export default function Payments() {
         return [...transactions, txToUse];
       })();
 
+      // sort newest-first (date desc), fallback to id desc
+      newTxs.sort((a, b) => {
+        const ta = a.date ? new Date(a.date).getTime() : 0;
+        const tb = b.date ? new Date(b.date).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+        return (b.id || 0) - (a.id || 0);
+      });
+
       // Update state with the new array and recalc summary immediately
-      // We call calculateSummary with newTxs explicitly to avoid timing issues
       setTransactions(newTxs);
       calculateSummary(newTxs);
     } catch (err) {
@@ -1140,24 +1156,24 @@ export default function Payments() {
         </div>
 
         {/* ---------- Third Div: Table with rounded colored rows + action ----------- */}
-        <div className="card p-4 rounded-lg shadow-md bg-white">
-          <h3 className="font-semibold mb-4 text-lg border-b pb-2 text-gray-700">
+        <div className="card p-3 rounded-lg shadow-md bg-white">
+          <h3 className="font-semibold mb-3 text-base border-b pb-2 text-gray-700">
             Transactions
           </h3>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+            <table className="min-w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
-                  <th className="p-3 text-center font-semibold">Type</th>
-                  <th className="p-3 text-center font-semibold">Category</th>
-                  <th className="p-3 text-center font-semibold">Amount</th>
-                  <th className="p-3 text-center font-semibold">Method</th>
-                  <th className="p-3 text-center font-semibold">Closing</th>
-                  <th className="p-3 text-center font-semibold">Date</th>
-                  <th className="p-3 text-center font-semibold">Reference</th>
-                  <th className="p-3 text-center font-semibold">Description</th>
-                  <th className="p-3 text-center font-semibold">Action</th>
+                  <th className="p-2 text-center font-semibold">Type</th>
+                  <th className="p-2 text-center font-semibold">Category</th>
+                  <th className="p-2 text-center font-semibold">Amount</th>
+                  <th className="p-2 text-center font-semibold">Method</th>
+                  <th className="p-2 text-center font-semibold">Closing</th>
+                  <th className="p-2 text-center font-semibold">Date</th>
+                  <th className="p-2 text-center font-semibold">Reference</th>
+                  <th className="p-2 text-center font-semibold">Description</th>
+                  <th className="p-2 text-center font-semibold">Action</th>
                 </tr>
               </thead>
 
@@ -1170,10 +1186,9 @@ export default function Payments() {
                       key={tx.id}
                       className="border-b last:border-0 hover:bg-gray-50 transition"
                     >
-                      {/* Type badge only */}
-                      <td className="p-3 align-top text-center">
+                      <td className="p-2 align-top text-center">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold  ${
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                             isIncome
                               ? "bg-green-100 text-green-700"
                               : "bg-red-100 text-red-700"
@@ -1183,42 +1198,39 @@ export default function Payments() {
                         </span>
                       </td>
 
-                      <td className="p-3 align-top text-gray-700 text-center">
+                      <td className="p-2 text-center text-gray-700">
                         {tx.category}
                       </td>
-                      <td className="p-3 text-center align-top text-gray-700 font-medium">
+                      <td className="p-2 text-center text-gray-700 font-medium">
                         ₹{tx.amount}
                       </td>
-                      <td className="p-3 align-top text-gray-600 text-center">
+                      <td className="p-2 text-center text-gray-600">
                         {tx.method}
                       </td>
-                      <td className="p-3 text-center align-top text-gray-600">
+                      <td className="p-2 text-center text-gray-600">
                         ₹{tx.closingBalance ?? "-"}
                       </td>
-                      <td className="p-3 align-top text-gray-600 text-center">
+                      <td className="p-2 text-center text-gray-600">
                         {new Date(tx.date).toLocaleDateString()}
                       </td>
-                      <td className="p-3 align-top text-gray-600 text-center">
+                      <td className="p-2 text-center text-gray-600">
                         {tx.reference}
                       </td>
-                      <td className="p-3 align-top text-gray-600 text-center">
+                      <td className="p-2 text-center text-gray-600">
                         {tx.description}
                       </td>
 
-                      {/* Action Button */}
-                      <td className="p-3 text-center align-top">
+                      <td className="p-2 text-center">
                         <button
-                          className="text-white text-xs px-2 py-1 rounded-md mr-1 transition-all"
+                          className="text-white text-[10px] px-2 py-0.5 rounded-md mr-1 transition-all"
                           style={{ backgroundColor: "rgb(128, 41, 73)" }}
                           onClick={() => editTransaction(tx)}
                         >
                           Edit
                         </button>
                         <button
-                          className="text-white text-xs px-3 py-1 rounded-md transition-all"
-                          style={{
-                            backgroundColor: "rgb(128, 41, 73)",
-                          }}
+                          className="text-white text-[10px] px-2 py-0.5 rounded-md transition-all"
+                          style={{ backgroundColor: "rgb(128, 41, 73)" }}
                           onMouseEnter={(e) =>
                             (e.currentTarget.style.backgroundColor =
                               "rgb(110, 30, 60)")
@@ -1241,7 +1253,7 @@ export default function Payments() {
                   <tr>
                     <td
                       colSpan={9}
-                      className="p-5 text-center text-gray-500 bg-gray-50 rounded-b-lg"
+                      className="p-4 text-center text-gray-500 bg-gray-50 rounded-b-lg"
                     >
                       No transactions found.
                     </td>
@@ -1251,10 +1263,10 @@ export default function Payments() {
             </table>
           </div>
 
-          {/* Pagination UI (numbered pages) */}
-          <div className="mt-4 flex justify-center">
+          {/* Pagination */}
+          <div className="mt-3 flex justify-center">
             <nav
-              className="inline-flex items-center space-x-2"
+              className="inline-flex items-center space-x-1"
               aria-label="Pagination"
             >
               {Array.from({ length: totalPages }).map((_, idx) => {
@@ -1264,12 +1276,11 @@ export default function Payments() {
                   <button
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium border ${
+                    className={`px-2.5 py-0.5 rounded-md text-xs font-medium border ${
                       isActive
                         ? "bg-[rgb(128,41,73)] text-white border-[rgb(128,41,73)]"
                         : "bg-white text-[rgb(128,41,73)] border-[rgb(128,41,73)] hover:bg-[rgb(128,41,73)] hover:text-white"
                     }`}
-                    aria-current={isActive ? "page" : undefined}
                   >
                     {pageNum}
                   </button>

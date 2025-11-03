@@ -95,7 +95,7 @@ export default function InvoiceForm({
   );
   const [dueDate, setDueDate] = useState<string>(initialInvoice?.dueDate || "");
   const [date, setDate] = useState<string>(
-    formatDateForInput(initialInvoice?.date ?? undefined)
+    formatDateForInput(initialInvoice?.date ?? new Date().toISOString())
   );
   const [items, setItems] = useState<Item[]>(
     initialInvoice?.items?.map((it: Item) => ({
