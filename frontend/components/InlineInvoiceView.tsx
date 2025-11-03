@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { authFetch } from "../lib/api";
-import html2pdf from "html2pdf.js";
+
 import InvoiceForm from "./InvoiceForm";
 import type { Invoice } from "../src/types/invoice";
 

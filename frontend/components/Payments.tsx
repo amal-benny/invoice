@@ -1,6 +1,6 @@
 // payment.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState} from "react";
 import { authFetch } from "../lib/api";
 import {
   Wallet,
@@ -780,6 +780,8 @@ export default function Payments() {
       reference: tx.reference || "",
     });
     setUseOtherCategory(false);
+
+    
   };
 
   useEffect(() => {
@@ -946,6 +948,7 @@ export default function Payments() {
         <div className="grid grid-cols-3 gap-2 mb-2">
           <select
             className="input"
+            
             value={txnForm.type}
             onChange={(e) =>
               setTxnForm({
