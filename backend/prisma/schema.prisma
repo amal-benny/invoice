@@ -92,10 +92,7 @@ model Invoice {
   payments         Payment[]
 }
 
-model InvoiceSequence {
-  year Int  @id
-  last Int  @default(0)
-}
+
 
 
 model InvoiceItem {
@@ -184,6 +181,17 @@ model PaymentLedger {
   createdAt   DateTime @default(now())
   createdById Int
   createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
+model InvoiceSequences {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  year     Int
+  prefix   String
+  last     Int    @default(0)
+
+  @@unique([userId, year, prefix])
+  @@map("invoice_sequences")
 }
 
 

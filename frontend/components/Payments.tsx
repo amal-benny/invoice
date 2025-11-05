@@ -1,6 +1,6 @@
 // payment.tsx
 "use client";
-import { useEffect, useState} from "react";
+import { useEffect, useState } from "react";
 import { authFetch } from "../lib/api";
 import {
   Wallet,
@@ -234,36 +234,37 @@ export default function Payments() {
     }
   }
 
- async function loadTransactions() {
-  try {
-    const query = new URLSearchParams(
-      Object.fromEntries(Object.entries(search).filter(([, v]) => v !== ""))
-    ).toString();
+  async function loadTransactions() {
+    try {
+      const query = new URLSearchParams(
+        Object.fromEntries(Object.entries(search).filter(([, v]) => v !== ""))
+      ).toString();
 
-    const data = (await authFetch(`/api/transactions?${query}`)) as Transaction[];
+      const data = (await authFetch(
+        `/api/transactions?${query}`
+      )) as Transaction[];
 
-    const normalized = (data.map((t) => ({
-      ...t,
-      method:
-        typeof t.method === "string"
-          ? (t.method.charAt(0).toUpperCase() + t.method.slice(1).toLowerCase())
-          : t.method,
-    })) as Transaction[]);
+      const normalized = data.map((t) => ({
+        ...t,
+        method:
+          typeof t.method === "string"
+            ? t.method.charAt(0).toUpperCase() + t.method.slice(1).toLowerCase()
+            : t.method,
+      })) as Transaction[];
 
-    // sort by date DESC (newest first). Fallback to id desc if date missing.
-    normalized.sort((a, b) => {
-      const ta = a.date ? new Date(a.date).getTime() : 0;
-      const tb = b.date ? new Date(b.date).getTime() : 0;
-      if (tb !== ta) return tb - ta;
-      return (b.id || 0) - (a.id || 0);
-    });
+      // sort by date DESC (newest first). Fallback to id desc if date missing.
+      normalized.sort((a, b) => {
+        const ta = a.date ? new Date(a.date).getTime() : 0;
+        const tb = b.date ? new Date(b.date).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+        return (b.id || 0) - (a.id || 0);
+      });
 
-    setTransactions(normalized);
-  } catch (err) {
-    console.error("Failed to load transactions", err);
+      setTransactions(normalized);
+    } catch (err) {
+      console.error("Failed to load transactions", err);
+    }
   }
-}
-
 
   async function addOrUpdateBalance() {
     if (!newBalance && newBalance !== 0) return;
@@ -780,8 +781,6 @@ export default function Payments() {
       reference: tx.reference || "",
     });
     setUseOtherCategory(false);
-
-    
   };
 
   useEffect(() => {
@@ -941,109 +940,187 @@ export default function Payments() {
       </div>
 
       {/* --- Add Transaction --- */}
+      {/* --- Add Transaction (with required validation) --- */}
       <div className="card p-4">
         <h3 className="font-semibold mb-2">
           {editingTransaction ? "Edit Transaction" : "Add New Transaction"}
         </h3>
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          <select
-            className="input"
-            
-            value={txnForm.type}
-            onChange={(e) =>
-              setTxnForm({
-                ...txnForm,
-                type: e.target.value as TransactionType,
-              })
+
+        {/* submit handler validates fields then calls addTransaction */}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+
+            // Category handling: if using other, ensure text entered; otherwise ensure select chosen
+            if (useOtherCategory) {
+              if (!txnForm.category || txnForm.category.trim() === "") {
+                alert("Please enter a category.");
+                return;
+              }
+            } else {
+              if (!txnForm.category || txnForm.category === "") {
+                alert("Please select a category.");
+                return;
+              }
             }
-          >
-            <option value="INCOME">Income</option>
-            <option value="EXPENSE">Expense</option>
-          </select>
-          <div>
+
+            // Type
+            if (
+              !txnForm.type ||
+              (txnForm.type !== "INCOME" && txnForm.type !== "EXPENSE")
+            ) {
+              alert("Please select transaction type.");
+              return;
+            }
+
+            // Amount
+            if (!txnForm.amount || Number(txnForm.amount) <= 0) {
+              alert("Please enter an amount greater than 0.");
+              return;
+            }
+
+            // Date
+            if (!txnForm.date || txnForm.date === "") {
+              alert("Please select a date.");
+              return;
+            }
+
+            // Description
+            if (!txnForm.description || txnForm.description.trim() === "") {
+              alert("Please enter a description.");
+              return;
+            }
+
+            // Method
+            if (
+              !txnForm.method ||
+              (txnForm.method !== "Cash" && txnForm.method !== "Bank")
+            ) {
+              alert("Please select Cash or Bank as method.");
+              return;
+            }
+
+            // All good — call the existing function that handles API + state updates
+            await addTransaction();
+          }}
+        >
+          <div className="grid grid-cols-3 gap-2 mb-2">
             <select
-              className="input w-full"
-              value={useOtherCategory ? "_other_" : txnForm.category}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "_other_") {
-                  setUseOtherCategory(true);
-                  setTxnForm({ ...txnForm, category: "" });
-                } else {
-                  setUseOtherCategory(false);
-                  setTxnForm({ ...txnForm, category: v });
-                }
-              }}
+              className="input"
+              value={txnForm.type}
+              required
+              onChange={(e) =>
+                setTxnForm({
+                  ...txnForm,
+                  type: e.target.value as TransactionType,
+                })
+              }
             >
-              <option value="">Select Category</option>
-              {ledgers.map((l) => (
-                <option key={l.id} value={l.category}>
-                  {l.category}
-                </option>
-              ))}
-              <option value="_other_">Other (type manually)</option>
+              <option value="">Select Type</option>
+              <option value="INCOME">Income</option>
+              <option value="EXPENSE">Expense</option>
             </select>
 
-            {useOtherCategory && (
-              <input
-                className="input mt-2"
-                placeholder="Enter category"
-                value={txnForm.category}
-                onChange={(e) =>
-                  setTxnForm({ ...txnForm, category: e.target.value })
-                }
-              />
-            )}
+            <div>
+              <select
+                className="input w-full"
+                value={useOtherCategory ? "_other_" : txnForm.category}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "_other_") {
+                    setUseOtherCategory(true);
+                    setTxnForm({ ...txnForm, category: "" });
+                  } else {
+                    setUseOtherCategory(false);
+                    setTxnForm({ ...txnForm, category: v });
+                  }
+                }}
+                required={!useOtherCategory} // required when not using the other input
+              >
+                <option value="">Select Category</option>
+                {ledgers.map((l) => (
+                  <option key={l.id} value={l.category}>
+                    {l.category}
+                  </option>
+                ))}
+                <option value="_other_">Other (type manually)</option>
+              </select>
+
+              {useOtherCategory && (
+                <input
+                  className="input mt-2"
+                  placeholder="Enter category"
+                  value={txnForm.category}
+                  required={useOtherCategory}
+                  onChange={(e) =>
+                    setTxnForm({ ...txnForm, category: e.target.value })
+                  }
+                />
+              )}
+            </div>
+
+            <input
+              className="input"
+              type="number"
+              placeholder="Amount (₹)"
+              value={txnForm.amount}
+              required
+              min={0.01}
+              step="0.01"
+              onChange={(e) =>
+                setTxnForm({ ...txnForm, amount: Number(e.target.value) })
+              }
+            />
+
+            <input
+              className="input"
+              type="date"
+              value={txnForm.date || ""}
+              required
+              onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })}
+            />
+
+            <input
+              className="input"
+              placeholder="Description"
+              value={txnForm.description}
+              required
+              onChange={(e) =>
+                setTxnForm({ ...txnForm, description: e.target.value })
+              }
+            />
+
+            <select
+              className="input"
+              value={txnForm.method}
+              required
+              onChange={(e) =>
+                setTxnForm({
+                  ...txnForm,
+                  method: e.target.value as "Cash" | "Bank",
+                })
+              }
+            >
+              <option value="">Select Method</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank">Bank</option>
+            </select>
+
+            <input
+              className="input"
+              placeholder="Reference"
+              value={txnForm.reference}
+              onChange={(e) =>
+                setTxnForm({ ...txnForm, reference: e.target.value })
+              }
+            />
+
+            <div />
+            <button type="submit" className="btn col-span-1">
+              {editingTransaction ? "Update Transaction" : "Add Transaction"}
+            </button>
           </div>
-          <input
-            className="input"
-            type="number"
-            placeholder="Amount (₹)"
-            value={txnForm.amount}
-            onChange={(e) =>
-              setTxnForm({ ...txnForm, amount: Number(e.target.value) })
-            }
-          />
-          <input
-            className="input"
-            type="date"
-            value={txnForm.date || ""}
-            onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="Description"
-            value={txnForm.description}
-            onChange={(e) =>
-              setTxnForm({ ...txnForm, description: e.target.value })
-            }
-          />
-          <select
-            className="input"
-            value={txnForm.method}
-            onChange={(e) =>
-              setTxnForm({
-                ...txnForm,
-                method: e.target.value as "Cash" | "Bank",
-              })
-            }
-          >
-            <option>Cash</option>
-            <option>Bank</option>
-          </select>
-          <input
-            className="input"
-            placeholder="Reference"
-            value={txnForm.reference}
-            onChange={(e) =>
-              setTxnForm({ ...txnForm, reference: e.target.value })
-            }
-          />
-          <div />
-          <button className="btn col-span-1" onClick={addTransaction}>
-            {editingTransaction ? "Update Transaction" : "Add Transaction"}
-          </button>
-        </div>
+        </form>
       </div>
 
       {/* --- Transactions List --- */}
@@ -1169,13 +1246,15 @@ export default function Payments() {
               <thead className="bg-gray-100 text-gray-700">
                 <tr>
                   <th className="p-2 text-center font-semibold">Type</th>
-                  <th className="p-2 text-center font-semibold">Category</th>
-                  <th className="p-2 text-center font-semibold">Amount</th>
-                  <th className="p-2 text-center font-semibold">Method</th>
-                  <th className="p-2 text-center font-semibold">Closing</th>
-                  <th className="p-2 text-center font-semibold">Date</th>
-                  <th className="p-2 text-center font-semibold">Reference</th>
-                  <th className="p-2 text-center font-semibold">Description</th>
+                  <th className="p-2 text-left font-semibold">Category</th>
+
+                  <th className="p-2 text-left font-semibold">Method</th>
+
+                  <th className="p-2 text-left font-semibold">Date</th>
+                  <th className="p-2 text-left font-semibold">Reference</th>
+                  <th className="p-2 text-left font-semibold">Description</th>
+                  <th className="p-2 text-right font-semibold">Amount</th>
+                  <th className="p-2 text-right font-semibold">Closing</th>
                   <th className="p-2 text-center font-semibold">Action</th>
                 </tr>
               </thead>
@@ -1201,26 +1280,28 @@ export default function Payments() {
                         </span>
                       </td>
 
-                      <td className="p-2 text-center text-gray-700">
+                      <td className="p-2 text-left text-gray-700">
                         {tx.category}
                       </td>
-                      <td className="p-2 text-center text-gray-700 font-medium">
-                        ₹{tx.amount}
-                      </td>
-                      <td className="p-2 text-center text-gray-600">
+
+                      <td className="p-2 text-left text-gray-600">
                         {tx.method}
                       </td>
-                      <td className="p-2 text-center text-gray-600">
-                        ₹{tx.closingBalance ?? "-"}
-                      </td>
-                      <td className="p-2 text-center text-gray-600">
+
+                      <td className="p-2 text-left text-gray-600">
                         {new Date(tx.date).toLocaleDateString()}
                       </td>
-                      <td className="p-2 text-center text-gray-600">
+                      <td className="p-2 text-left text-gray-600">
                         {tx.reference}
                       </td>
-                      <td className="p-2 text-center text-gray-600">
+                      <td className="p-2 text-left text-gray-600">
                         {tx.description}
+                      </td>
+                      <td className="p-2 text-right text-gray-700 font-medium">
+                        ₹{tx.amount}
+                      </td>
+                      <td className="p-2 text-right text-gray-600">
+                        ₹{tx.closingBalance ?? "-"}
                       </td>
 
                       <td className="p-2 text-center">
