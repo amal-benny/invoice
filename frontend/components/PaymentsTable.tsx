@@ -82,7 +82,15 @@ export default function PaymentsTable() {
     setSearchInput("");
     setSearchQuery("");
     setCurrentPage(1);
-  };
+  };  
+
+    function formatDateToDMY(dateInput?: string | Date): string {
+  if (!dateInput) return "";
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return "";
+  // en-GB gives dd/mm/yyyy
+  return d.toLocaleDateString("en-GB");
+}
 
   return (
     <div className="overflow-x-auto p-3 bg-white shadow-md rounded-lg">
@@ -170,7 +178,7 @@ export default function PaymentsTable() {
                 <tr key={p.id} className="hover:bg-indigo-50 transition-colors">
                   <td className="px-2 py-1 text-gray-800">{p.invoice.invoiceNumber}</td>
                   <td className="px-2 py-1 text-gray-700">
-                    {new Date(p.date).toLocaleDateString()}
+                     {formatDateToDMY(p.date)}
                   </td>
                   <td className="px-2 py-1">{p.method}</td>
                   <td className="px-2 py-1 font-medium">{formatAmount(p.amount)}</td>

@@ -209,6 +209,14 @@ Thank you!`;
     );
   });
 
+   function formatDateToDMY(dateInput?: string | Date): string {
+  if (!dateInput) return "";
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return "";
+  // en-GB gives dd/mm/yyyy
+  return d.toLocaleDateString("en-GB");
+}
+
   return (
     <>
       <div className="card mt-6">
@@ -307,7 +315,7 @@ Thank you!`;
                       </td>
                       <td className="px-3 py-2 border-b">
                         {inv.date
-                          ? new Date(inv.date).toLocaleDateString()
+                          ? formatDateToDMY(inv.date)
                           : "-"}
                       </td>
                       <td className="px-3 py-2 border-b">

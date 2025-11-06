@@ -502,7 +502,7 @@ export default function Payments() {
       Amount: tx.amount,
       Method: tx.method,
       "Closing Balance": tx.closingBalance,
-      Date: new Date(tx.date).toLocaleDateString(),
+      Date: formatDateToDMY(tx.date),
       Reference: tx.reference,
       Description: tx.description,
     }));
@@ -536,9 +536,7 @@ export default function Payments() {
     const heading =
       tx.type === "INCOME" ? "Receipt Voucher" : "Payment Voucher";
     const voucherNo = tx.id ?? "";
-    const dateStr = tx.date
-      ? new Date(tx.date).toLocaleDateString()
-      : new Date().toLocaleDateString();
+   const dateStr = tx.date ? formatDateToDMY(tx.date) : formatDateToDMY(new Date());
     const amountFormatted =
       typeof tx.amount === "number" ? tx.amount.toFixed(2) : tx.amount;
 
@@ -805,6 +803,15 @@ export default function Payments() {
     currentPage * pageSize
   );
 
+  function formatDateToDMY(dateInput?: string | Date): string {
+  if (!dateInput) return "";
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return "";
+  // en-GB gives dd/mm/yyyy
+  return d.toLocaleDateString("en-GB");
+}
+
+
   return (
     <div className="space-y-6">
       {/* --- Cash Summary --- */}
@@ -932,7 +939,7 @@ export default function Payments() {
             >
               <span>
                 ₹{b.amount} ({b.method}) —{" "}
-                {new Date(b.date).toLocaleDateString()}
+                {formatDateToDMY(b.date)}
               </span>
             </div>
           ))}
@@ -1289,7 +1296,7 @@ export default function Payments() {
                       </td>
 
                       <td className="p-2 text-left text-gray-600">
-                        {new Date(tx.date).toLocaleDateString()}
+                        {formatDateToDMY(tx.date)}
                       </td>
                       <td className="p-2 text-left text-gray-600">
                         {tx.reference}
