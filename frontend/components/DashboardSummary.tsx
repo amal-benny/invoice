@@ -244,11 +244,7 @@ export default function DashboardSummary() {
         </div>
       </div>
 
-      <div className="text-sm text-gray-500 mt-2">
-        This dashboard is read-only — starting balances are managed in the Payments
-        screen. After making changes in Payments/Invoice, call{" "}
-        <code>window.updateDashboardRefresh()</code> to refresh the dashboard.
-      </div>
+      
     </div>
   );
 }

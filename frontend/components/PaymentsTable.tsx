@@ -131,11 +131,11 @@ export default function PaymentsTable() {
       </div>
 
       {/* Table */}
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
+      <table className="min-w-full divide-y divide-gray-200 text-xs">
         <thead className="bg-indigo-50 text-gray-700">
           <tr>
             {[
-              "Invoice #",
+              "Invoice ",
               "Date",
               "Method",
               "Amount",
@@ -150,7 +150,7 @@ export default function PaymentsTable() {
             ].map((header) => (
               <th
                 key={header}
-                className="px-2 py-2 text-left font-medium uppercase tracking-wider"
+                className="px-2 py-2 text-left font-medium font-bold tracking-wider"
               >
                 {header}
               </th>

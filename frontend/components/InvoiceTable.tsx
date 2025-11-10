@@ -34,6 +34,8 @@ export default function InvoiceTable({
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
   const [deletedIds, setDeletedIds] = useState<number[]>([]);
   const [searchText, setSearchText] = useState("");
+  
+  
 
   // Load deleted IDs from localStorage on mount
   useEffect(() => {
@@ -156,10 +158,12 @@ export default function InvoiceTable({
       ""
     );
   }
+  
 
   // --- NEW: function to open Whatsapp link (uses window.open so no change to app state) ---
   function openWhatsAppForInvoice(inv: Invoice, paid: number) {
     const rawPhone = getCustomerPhoneRaw(inv);
+    
     if (!rawPhone) {
       toast.info("Customer phone number not available.");
       return;
@@ -175,10 +179,14 @@ export default function InvoiceTable({
     const balance = Number((total - paid).toFixed(2));
     const name = inv.customer?.name || "";
     const invoiceNumber = inv.invoiceNumber || "";
+    // --- inside openWhatsAppForInvoice ---
+     const dateOnly = inv.date ? new Date(inv.date).toISOString().split("T")[0] : "";
+
+    
 
     const message = `Hello ${name},
 
-This is regarding *Invoice ${invoiceNumber}*. 
+This is regarding *Invoice ${invoiceNumber}*, issued on ${dateOnly}. 
 
 The amount paid to date is *${inv.currency} ${paid.toFixed(
       2
@@ -262,7 +270,7 @@ Thank you!`;
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full table-auto border border-gray-200">
+          <table className="w-full table-auto border border-gray-200 text-sm">
             <thead>
               <tr className="bg-gray-50 text-left">
                 <th className="px-3 py-2 border-b">#</th>
