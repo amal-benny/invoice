@@ -142,8 +142,11 @@ export default function Payments() {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const todayISO = () => new Date().toISOString().split("T")[0];
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
+    
 
   const [txnForm, setTxnForm] = useState({
     type: "INCOME" as TransactionType,
@@ -156,7 +159,7 @@ export default function Payments() {
   });
   const [useOtherCategory, setUseOtherCategory] = useState(false);
 
-  const [search, setSearch] = useState<SearchFilters>({
+   const [search, setSearch] = useState({
     type: "",
     category: "",
     date: "",
@@ -185,7 +188,8 @@ export default function Payments() {
   }>({ startDate: "", endDate: "" });
 
   // Pagination state: show 8 rows per page
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const pageSize = 8;
   const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
 
@@ -193,7 +197,10 @@ export default function Payments() {
     loadBalances();
     loadTransactions();
     loadLedgers();
+    
   }, []);
+
+  
 
   // Ensure currentPage remains valid when transactions change
   useEffect(() => {
@@ -234,37 +241,57 @@ export default function Payments() {
     }
   }
 
-  async function loadTransactions() {
-    try {
-      const query = new URLSearchParams(
-        Object.fromEntries(Object.entries(search).filter(([, v]) => v !== ""))
-      ).toString();
+ async function loadTransactions() {
+  try {
+    // send only non-category filters to the server (avoid exact-match server filtering for category)
+    const queryObj = Object.fromEntries(
+      Object.entries(search).filter(([k, v]) => v !== "" && k !== "category")
+    );
+    const query = new URLSearchParams(queryObj as Record<string, string>).toString();
 
-      const data = (await authFetch(
-        `/api/transactions?${query}`
-      )) as Transaction[];
+    const data = (await authFetch(
+      `/api/transactions${query ? "?" + query : ""}`
+    )) as Transaction[];
 
-      const normalized = data.map((t) => ({
-        ...t,
-        method:
-          typeof t.method === "string"
-            ? t.method.charAt(0).toUpperCase() + t.method.slice(1).toLowerCase()
-            : t.method,
-      })) as Transaction[];
+    const normalized = data.map((t) => ({
+      ...t,
+      method:
+        typeof t.method === "string"
+          ? t.method.charAt(0).toUpperCase() + t.method.slice(1).toLowerCase()
+          : t.method,
+    })) as Transaction[];
 
-      // sort by date DESC (newest first). Fallback to id desc if date missing.
-      normalized.sort((a, b) => {
-        const ta = a.date ? new Date(a.date).getTime() : 0;
-        const tb = b.date ? new Date(b.date).getTime() : 0;
-        if (tb !== ta) return tb - ta;
-        return (b.id || 0) - (a.id || 0);
-      });
+    // client-side filtering: type (startsWith), category (partial include), date (exact day)
+    const categoryFilter = (search.category || "").trim().toLowerCase();
 
-      setTransactions(normalized);
-    } catch (err) {
-      console.error("Failed to load transactions", err);
-    }
+    const filtered = normalized.filter((t) => {
+      const matchType = search.type
+        ? t.type.toLowerCase().startsWith((search.type as string).toLowerCase())
+        : true;
+
+      const matchCategory = categoryFilter
+        ? (t.category || "").toLowerCase().includes(categoryFilter)
+        : true;
+
+      const matchDate = search.date ? t.date.startsWith(search.date) : true;
+
+      return matchType && matchCategory && matchDate;
+    });
+
+    // sort by date DESC (newest first). Fallback to id desc if date missing.
+    filtered.sort((a, b) => {
+      const ta = a.date ? new Date(a.date).getTime() : 0;
+      const tb = b.date ? new Date(b.date).getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      return (b.id || 0) - (a.id || 0);
+    });
+
+    setTransactions(filtered);
+  } catch (err) {
+    console.error("Failed to load transactions", err);
   }
+}
+
 
   async function addOrUpdateBalance() {
     if (!newBalance && newBalance !== 0) return;
@@ -1123,10 +1150,12 @@ export default function Payments() {
             />
 
             <div />
+            
             <button type="submit" className="btn col-span-1">
               {editingTransaction ? "Update Transaction" : "Add Transaction"}
-            </button>
-          </div>
+           
+        </button>
+        </div>
         </form>
       </div>
 

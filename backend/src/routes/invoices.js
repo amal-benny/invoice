@@ -1,47 +1,81 @@
-
+// src/routes/invoices.js
 const express = require("express");
 const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const auth = require("../middlewares/auth");
 
-// Safe generateInvoiceNumber for concurrency
-async function generateInvoiceNumber(prefix) {
+/**
+ * generateInvoiceNumber(tx, prefix, userId)
+ * Uses MySQL atomic INSERT ... ON DUPLICATE KEY UPDATE ... LAST_INSERT_ID(...) trick
+ * to atomically increment the `last` counter and return the new value within the same DB connection.
+ *
+ * Must be run with a transaction client `tx` (the client passed to prisma.$transaction callback)
+ * so that LAST_INSERT_ID() is reliable for that connection.
+ */
+async function generateInvoiceNumber(tx, prefix, userId, maxAttempts = 10) {
   if (prefix !== "INV" && prefix !== "QTN") {
     throw new Error("Prefix must be 'INV' or 'QTN'");
   }
 
-  return await prisma.$transaction(async (tx) => {
-    const year = new Date().getFullYear();
+  const year = new Date().getFullYear();
 
-    // Lock and get the latest invoice number
-    const last = await tx.invoice.findFirst({
-      where: { invoiceNumber: { startsWith: `${prefix}-${year}-` } },
-      orderBy: { id: "desc" },
-    });
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // increment sequence atomically for this connection
+    await tx.$executeRaw`
+      INSERT INTO invoice_sequences (userId, year, prefix, last)
+      VALUES (${userId}, ${year}, ${prefix}, 1)
+      ON DUPLICATE KEY UPDATE last = LAST_INSERT_ID(last + 1)
+    `;
 
-    let nextNumber = 1;
-    if (last?.invoiceNumber) {
-      const match = last.invoiceNumber.match(/(\d+)$/);
-      if (match) nextNumber = parseInt(match[1], 10) + 1;
+    const res = await tx.$queryRaw`SELECT LAST_INSERT_ID() as last`;
+    const seqNumber = Number(res && res[0] && (res[0].last ?? res[0]["LAST_INSERT_ID()"]));
+    if (!seqNumber || isNaN(seqNumber)) {
+      throw new Error("Failed to read invoice sequence number");
     }
 
-    return `${prefix}-${year}-${String(nextNumber).padStart(3, "0")}`;
-  });
+    const padded = String(seqNumber).padStart(3, "0");
+    const candidate = `${prefix}-${year}-${padded}`;
+
+    // Check for existing invoice with this number in the same transaction/connection
+    const existing = await tx.invoice.findFirst({ where: { invoiceNumber: candidate } });
+    if (!existing) {
+      return candidate;
+    }
+
+    // If exists, loop again to increment sequence and try next number.
+    // The next loop iteration will call the upsert and LAST_INSERT_ID will increment.
+  }
+
+  throw new Error("Failed to generate unique invoice number after multiple attempts");
 }
 
-/* Routes:
-POST   /api/invoices        -> create invoice/quote
-POST   /api/invoices/:id/convert -> convert quote to invoice (assigns invoiceNumber)
-GET    /api/invoices        -> list invoices (only own)
-GET    /api/invoices/:id    -> view invoice (only own)
-PUT    /api/invoices/:id    -> edit invoice + replace items (only own)
-DELETE /api/invoices/:id    -> delete invoice (only own)
-*/
+/**
+ * Helper: attempt to create invoice inside a transaction; retry on P2002
+ */
+async function createInvoiceWithRetries(txFactoryFn, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await txFactoryFn();
+    } catch (err) {
+      lastErr = err;
+      // If duplicate invoice number, retry (will regenerate sequence next attempt)
+      if (err && err.code === "P2002") {
+        // small backoff (optional)
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 50 * (i + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 
-
-
-// Create invoice or quote
+/**
+ * POST / -> create invoice or quote
+ */
 router.post("/", auth, async (req, res) => {
   const {
     type = "INVOICE",
@@ -51,74 +85,94 @@ router.post("/", auth, async (req, res) => {
     remark,
     note,
     currency = "INR",
-    advancePaid: frontendAdvance = 0, // <-- global advance from frontend
+    advancePaid: frontendAdvance = 0,
   } = req.body;
 
   try {
-    const created = await prisma.$transaction(async (tx) => {
-       const prefix = type === "QUOTE" ? "QTN" : "INV";
-      const invoiceNumber = await generateInvoiceNumber(prefix);
+    // We'll retry the whole transaction on P2002 a few times (defensive)
+    const created = await createInvoiceWithRetries(async () =>
+      prisma.$transaction(async (tx) => {
+        const prefix = type === "QUOTE" ? "QTN" : "INV";
 
-      let subtotal = 0,
-        totalGST = 0,
-        totalDiscount = 0,
-        advanceFromItems = 0;
+        // generate invoice number atomically using invoice_sequences with tx (same connection)
+        const invoiceNumber = await generateInvoiceNumber(tx, prefix, req.user.id);
 
-      for (const it of items) {
-        const qty = it.quantity || 1;
-        const price = parseFloat(it.price) || 0;
-        const discount = parseFloat(it.discount) || 0;
-        const advance = parseFloat(it.advance) || 0;
+        // compute totals safely
+        let subtotal = 0,
+          totalGST = 0,
+          totalDiscount = 0,
+          advanceFromItems = 0;
 
-        const lineBase = qty * price - discount;
-        subtotal += qty * price;
-        totalDiscount += discount;
-        totalGST += it.gstPercent
-          ? (lineBase * parseFloat(it.gstPercent)) / 100
-          : 0;
-        advanceFromItems += advance;
-      }
+        const safeItems = (items || []).map((it) => {
+          const quantity = Number(it.quantity) || 1;
+          const price = Number(it.price) || 0;
+          const discount = it.discount !== undefined && it.discount !== null ? Number(it.discount) : 0;
+          const gstPercent = it.gstPercent !== undefined && it.gstPercent !== null ? Number(it.gstPercent) : null;
+          const advance = it.advance !== undefined && it.advance !== null ? Number(it.advance) : 0;
 
-      const totalAdvance = advanceFromItems + parseFloat(frontendAdvance || 0);
-      const total = subtotal - totalDiscount + totalGST - totalAdvance;
+          const lineBase = quantity * price - (discount || 0);
+          subtotal += quantity * price;
+          totalDiscount += discount || 0;
+          totalGST += gstPercent ? (lineBase * gstPercent) / 100 : 0;
+          advanceFromItems += advance || 0;
 
-      const inv = await tx.invoice.create({
-        data: {
-          invoiceNumber,
-          type,
-          customerId: customerId || undefined,
-          dueDate: dueDate ? new Date(dueDate) : undefined,
-          createdById: req.user.id,
-          subtotal,
-          totalDiscount,
-          totalGST,
-          advancePaid: totalAdvance, // <-- save global + item advance
-          total,
-          remark,
-          currency,
-          note
-        },
-      });
+          return {
+            description: it.description || "",
+            category: it.category || null,
+            quantity,
+            price,
+            gstPercent,
+            discount: discount || null,
+            advance: advance || null,
+            remark: it.remark || null,
+            hsn: it.hsn || null,
+          };
+        });
 
-      if (items.length > 0) {
-        const createItems = items.map((it) => ({
-          invoiceId: inv.id,
-          description: it.description || "",
-          category: it.category || null,
-          quantity: it.quantity || 1,
-          price: it.price || 0,
-          gstPercent: it.gstPercent || null,
-          discount: it.discount || null,
-          advance: it.advance || null, // only item-specific advance
-          remark: it.remark || null,
-          hsn: it.hsn || null,
-        }));
-        await tx.invoiceItem.createMany({ data: createItems });
-      }
+        const totalAdvance = advanceFromItems + (parseFloat(frontendAdvance || 0) || 0);
+        const total = subtotal - totalDiscount + totalGST - totalAdvance;
 
-      return inv;
-    });
+        // Create invoice
+        const inv = await tx.invoice.create({
+          data: {
+            invoiceNumber,
+            type,
+            customerId: customerId || undefined,
+            dueDate: dueDate ? new Date(dueDate) : undefined,
+            createdById: req.user.id,
+            subtotal,
+            totalDiscount,
+            totalGST,
+            advancePaid: totalAdvance,
+            total,
+            remark,
+            currency,
+            note,
+          },
+        });
 
+        // Create items if present
+        if (safeItems.length > 0) {
+          const createItems = safeItems.map((it) => ({
+            invoiceId: inv.id,
+            description: it.description,
+            category: it.category,
+            quantity: it.quantity,
+            price: it.price,
+            gstPercent: it.gstPercent,
+            discount: it.discount,
+            advance: it.advance,
+            remark: it.remark,
+            hsn: it.hsn,
+          }));
+          await tx.invoiceItem.createMany({ data: createItems });
+        }
+
+        return inv;
+      })
+    );
+
+    // fetch created invoice with relations
     const invoiceWithItems = await prisma.invoice.findUnique({
       where: { id: created.id },
       include: { items: true, customer: true, payments: true },
@@ -126,41 +180,57 @@ router.post("/", auth, async (req, res) => {
 
     res.json(invoiceWithItems);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: err.message });
+    console.error("POST /api/invoices failed:", err);
+    if (err && err.code === "P2002") {
+      return res.status(409).json({ message: "Duplicate invoice number. Please try again." });
+    }
+    res.status(500).json({ message: err.message || "Failed to create invoice", error: err });
   }
 });
 
-
-//
-// Convert quote to invoice
-//
+/**
+ * POST /:id/convert -> convert QUOTE to INVOICE (atomic)
+ */
 router.post("/:id/convert", auth, async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invoice id" });
+
   try {
-    const invoice = await prisma.invoice.findUnique({ where: { id } });
-    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
-    if (invoice.createdById !== req.user.id) return res.status(403).json({ message: "Not authorized" });
+    const updated = await createInvoiceWithRetries(async () =>
+      prisma.$transaction(async (tx) => {
+        const invoice = await tx.invoice.findUnique({ where: { id } });
+        if (!invoice) throw { status: 404, message: "Invoice not found" };
+        if (invoice.createdById !== req.user.id) throw { status: 403, message: "Not authorized" };
+        if (invoice.type === "INVOICE") return invoice;
 
-    if (invoice.type === "INVOICE") return res.json(invoice);
+        const invoiceNumber = await generateInvoiceNumber(tx, "INV", req.user.id);
 
-    const invoiceNumber = await generateInvoiceNumber("INV");
+        const updatedInvoice = await tx.invoice.update({
+          where: { id },
+          data: { type: "INVOICE", invoiceNumber },
+        });
 
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: { type: "INVOICE", invoiceNumber }
+        return updatedInvoice;
+      })
+    );
+
+    const invoiceWithItems = await prisma.invoice.findUnique({
+      where: { id: updated.id },
+      include: { items: true, customer: true, payments: true },
     });
 
-    res.json(updated);
+    res.json(invoiceWithItems);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: err.message });
+    console.error("POST /api/invoices/:id/convert failed:", err);
+    if (err && err.status) return res.status(err.status).json({ message: err.message });
+    if (err && err.code === "P2002") return res.status(409).json({ message: "Duplicate invoice number. Please retry." });
+    res.status(500).json({ message: err.message || "Failed to convert quote", error: err });
   }
 });
 
-//
-// List invoices (only own)
-//
+/**
+ * GET / -> list invoices for current user
+ */
 router.get("/", auth, async (req, res) => {
   try {
     const { status } = req.query;
@@ -170,40 +240,42 @@ router.get("/", auth, async (req, res) => {
     const invoices = await prisma.invoice.findMany({
       where,
       include: { customer: true, items: true, payments: true },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     });
-
     res.json(invoices);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: err.message });
+    console.error("GET /api/invoices failed:", err);
+    res.status(500).json({ message: err.message || "Failed to fetch invoices" });
   }
 });
 
-//
-// View invoice (only own)
-//
+/**
+ * GET /:id -> view invoice (owner only)
+ */
 router.get("/:id", auth, async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invoice id" });
+
   try {
-    const invoice = await prisma.invoice.findUnique({ where: { id }, include: { items: true, payments: true, customer: true } });
+    const invoice = await prisma.invoice.findUnique({
+      where: { id },
+      include: { items: true, payments: true, customer: true },
+    });
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
     if (invoice.createdById !== req.user.id) return res.status(403).json({ message: "Not authorized" });
-
     res.json(invoice);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: err.message });
+    console.error("GET /api/invoices/:id failed:", err);
+    res.status(500).json({ message: err.message || "Failed to fetch invoice" });
   }
 });
 
-//
-// Edit invoice (update invoice fields and replace items) - only owner
-//
-
+/**
+ * PUT /:id -> update invoice & replace items (owner only)
+ */
 router.put("/:id", auth, async (req, res) => {
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ message: "Invalid invoice ID" });
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invoice ID" });
 
   const {
     type,
@@ -222,49 +294,48 @@ router.put("/:id", auth, async (req, res) => {
       include: { items: true },
     });
     if (!existing) return res.status(404).json({ message: "Invoice not found" });
-    if (existing.createdById !== req.user.id)
-      return res.status(403).json({ message: "Not authorized" });
+    if (existing.createdById !== req.user.id) return res.status(403).json({ message: "Not authorized" });
 
-    // Validate customerId safely
     let parsedCustomerId = null;
     if (customerId !== undefined && customerId !== null) {
       parsedCustomerId = Number(customerId);
-      const customerExists = await prisma.customer.findUnique({
-        where: { id: parsedCustomerId },
-      });
-      if (!customerExists) {
-        return res.status(400).json({ message: "Invalid customerId" });
-      }
+      const customerExists = await prisma.customer.findUnique({ where: { id: parsedCustomerId } });
+      if (!customerExists) return res.status(400).json({ message: "Invalid customerId" });
     }
 
     const parsedDueDate = dueDate ? new Date(dueDate) : existing.dueDate;
     const parsedAdvance = frontendAdvance ? Number(frontendAdvance) : 0;
 
-    // Compute totals safely
     let subtotal = 0,
       totalGST = 0,
       totalDiscount = 0,
       advanceFromItems = 0;
 
-    const safeItems = items.map((it) => ({
-      description: it.description || "",
-      category: it.category || null,
-      quantity: Number(it.quantity) || 1,
-      price: Number(it.price) || 0,
-      gstPercent: it.gstPercent !== undefined && it.gstPercent !== null ? Number(it.gstPercent) : null,
-      discount: it.discount !== undefined && it.discount !== null ? Number(it.discount) : null,
-      advance: it.advance !== undefined && it.advance !== null ? Number(it.advance) : 0,
-      remark: it.remark || null,
-      hsn: it.hsn || null,
-    }));
+    const safeItems = (items || []).map((it) => {
+      const quantity = Number(it.quantity) || 1;
+      const price = Number(it.price) || 0;
+      const gstPercent = it.gstPercent !== undefined && it.gstPercent !== null ? Number(it.gstPercent) : null;
+      const discount = it.discount !== undefined && it.discount !== null ? Number(it.discount) : 0;
+      const advance = it.advance !== undefined && it.advance !== null ? Number(it.advance) : 0;
 
-    for (const it of safeItems) {
-      const lineBase = it.quantity * it.price - (it.discount || 0);
-      subtotal += it.quantity * it.price;
-      totalDiscount += it.discount || 0;
-      totalGST += it.gstPercent ? (lineBase * it.gstPercent) / 100 : 0;
-      advanceFromItems += it.advance || 0;
-    }
+      const lineBase = quantity * price - (discount || 0);
+      subtotal += quantity * price;
+      totalDiscount += discount || 0;
+      totalGST += gstPercent ? (lineBase * gstPercent) / 100 : 0;
+      advanceFromItems += advance || 0;
+
+      return {
+        description: it.description || "",
+        category: it.category || null,
+        quantity,
+        price,
+        gstPercent,
+        discount: discount || null,
+        advance: advance || null,
+        remark: it.remark || null,
+        hsn: it.hsn || null,
+      };
+    });
 
     const totalAdvance = advanceFromItems + parsedAdvance;
     const total = subtotal - totalDiscount + totalGST - totalAdvance;
@@ -274,7 +345,7 @@ router.put("/:id", auth, async (req, res) => {
         where: { id },
         data: {
           type: type || existing.type,
-          customerId: parsedCustomerId, // safe now
+          customerId: parsedCustomerId,
           dueDate: parsedDueDate,
           remark: remark !== undefined ? remark : existing.remark,
           currency: currency || existing.currency,
@@ -290,9 +361,7 @@ router.put("/:id", auth, async (req, res) => {
       // Replace items
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
       if (safeItems.length > 0) {
-        await tx.invoiceItem.createMany({
-          data: safeItems.map((it) => ({ invoiceId: id, ...it })),
-        });
+        await tx.invoiceItem.createMany({ data: safeItems.map((it) => ({ invoiceId: id, ...it })) });
       }
 
       return inv;
@@ -306,21 +375,21 @@ router.put("/:id", auth, async (req, res) => {
     res.json(invoiceWithItems);
   } catch (err) {
     console.error("PUT /api/invoices/:id failed:", err);
-    res.status(500).json({ message: "Failed to update invoice", error: err.message });
+    res.status(500).json({ message: "Failed to update invoice", error: err.message || err });
   }
 });
 
-
-
-
-
+/**
+ * DELETE /:id -> delete invoice (owner only)
+ */
 router.delete("/:id", auth, async (req, res) => {
   const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid invoice ID" });
+
   try {
     const invoice = await prisma.invoice.findUnique({ where: { id } });
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
-    if (invoice.createdById !== req.user.id)
-      return res.status(403).json({ message: "Not authorized" });
+    if (invoice.createdById !== req.user.id) return res.status(403).json({ message: "Not authorized" });
 
     await prisma.$transaction(async (tx) => {
       await tx.payment.deleteMany({ where: { invoiceId: id } });
@@ -330,7 +399,7 @@ router.delete("/:id", auth, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Delete invoice error:", err);
+    console.error("DELETE /api/invoices/:id failed:", err);
     res.status(500).json({ message: "Failed to delete invoice" });
   }
 });
