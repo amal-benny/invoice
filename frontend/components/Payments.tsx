@@ -41,11 +41,11 @@ interface Ledger {
   category: string;
 }
 
-interface SearchFilters {
-  type: "" | TransactionType;
-  category: string;
-  date: string;
-}
+// interface SearchFilters {
+//   type: "" | TransactionType;
+//   category: string;
+//   date: string;
+// }
 
 interface Stats {
   cashStarting: number;
@@ -142,7 +142,7 @@ export default function Payments() {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const todayISO = () => new Date().toISOString().split("T")[0];
   const [editingBalance, setEditingBalance] = useState<Balance | null>(null);
-  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  
   
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
@@ -189,7 +189,7 @@ export default function Payments() {
 
   // Pagination state: show 8 rows per page
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+ 
   const pageSize = 8;
   const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
 
